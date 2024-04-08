@@ -8,16 +8,33 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
+import org.junit.jupiter.api.Disabled;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusTest
 public class LabelTest {
+
+
+    public static class CompareLabels implements Comparator<Label> {
+
+        @Override
+        public int compare(Label o1, Label o2) {
+            int rtrn = 0;
+            if(o1.usesLabelValueExtractor() && !o2.usesLabelValueExtractor()){
+                rtrn = -1;//o1 is less than 02
+            }else if (o2.usesLabelValueExtractor() && !o1.usesLabelValueExtractor()){
+                rtrn = 1;//o2 is less than o1
+            }else if (o1.dependsOn(o2)){
+                rtrn = -1;//o1 has to come after o2
+            }else if (o2.dependsOn(o1)) {
+                rtrn = 1;//o1 must come before o2
+            }
+            return rtrn;
+        }
+    }
 
     @Inject
     Validator validator;
@@ -29,7 +46,99 @@ public class LabelTest {
         extractorList.add(null);
         l.extractors = extractorList;
         Set<ConstraintViolation<Label>> violations = validator.validate(l);
-        System.out.println(violations);
+        assertFalse(violations.isEmpty(),violations.toString());
+    }
+    @org.junit.jupiter.api.Test
+    public void compareTo_sortOrder(){
+        Test t = new Test("example-test");
+        Label a1 = new Label("a1",t)
+                .loadExtractors(Extractor.fromString("$.a1").setName("a1"));
+        Label b1 = new Label("b1",t)
+                .loadExtractors(Extractor.fromString("$.b1").setName("b1"));
+        Label firstAKey = new Label("firstAKey",t)
+                .loadExtractors(Extractor.fromString("a1:$[0].key").setName("firstAKey"));
+        Label justA = new Label("justA",t)
+                .loadExtractors(Extractor.fromString("a1").setName("justA"));
+        Label iterA = new Label("iterA",t)
+                .setTargetSchema("uri:keyed")
+                .loadExtractors(Extractor.fromString("a1[]").setName("iterA"));
+        Label iterAKey = new Label("iterAKey",t)
+                //.setTargetSchema("uri:keyed") // causes an error when it targets a schema
+                .loadExtractors(Extractor.fromString("a1[]:$.key").setName("iterAKey"));
+        Label iterB = new Label("iterB",t)
+                .setTargetSchema("uri:keyed")
+                .loadExtractors(Extractor.fromString("b1[]").setName("iterB"));
+        Label foundA = new Label("foundA",t)
+                .loadExtractors(Extractor.fromString("iterA:$.key").setName("foundA"));
+        Label foundB = new Label("foundB",t)
+                .loadExtractors(Extractor.fromString("iterB:$.key").setName("foundB"));
+        Label nxn = new Label("nxn",t)
+                .loadExtractors(
+                        Extractor.fromString("iterA:$.key").setName("foundA"),
+                        Extractor.fromString("iterB:$.key").setName("foundB")
+                );
+        Label jenkinsBuild = new Label("build",t)
+                .loadExtractors(Extractor.fromString(
+                        RunMetadataExtractor.PREFIX+"metadata"+RunMetadataExtractor.SUFFIX+
+                                LabelValueExtractor.NAME_SEPARATOR+ JsonpathExtractor.PREFIX+".jenkins.build").setName("build")
+                );
+        nxn.multiType= Label.MultiIterationType.NxN;
+
+        t.loadLabels(justA,foundA,firstAKey,foundB,a1,b1,iterA,iterAKey,iterB,nxn,jenkinsBuild); // order should not matter
+
+
+        int nxnIndex = t.labels.indexOf(nxn);
+        int foundAIndex = t.labels.indexOf(foundA);
+        int foundBIndex = t.labels.indexOf(foundB);
+        int iterAKeyIndex = t.labels.indexOf(iterAKey);
+        int a1Index = t.labels.indexOf(a1);
+        int b1Index = t.labels.indexOf(b1);
+        int iterAIndex = t.labels.indexOf(iterA);
+        int iterBindex = t.labels.indexOf(iterB);
+
+        assertTrue(nxnIndex > iterAIndex);
+        assertTrue(nxnIndex > iterBindex);
+        assertTrue(foundAIndex > iterAIndex);
+        assertTrue(foundBIndex > iterBindex);
+        assertTrue(a1Index < iterAIndex);
+        assertTrue(b1Index < iterBindex);
+        assertTrue(iterAKeyIndex > a1Index);
+
+    }
+
+    @org.junit.jupiter.api.Test
+    public void compareTo_dependsOn_two(){
+        Label a1 = new Label("a1")
+                .loadExtractors(Extractor.fromString("$.a1").setName("a1"));
+        Label b1 = new Label("b1")
+                .loadExtractors(Extractor.fromString("$.b1").setName("b1"));
+        Label iterA = new Label("iterA")
+                .loadExtractors(Extractor.fromString("a1[]").setName("iterA"));
+        Label iterB = new Label("iterB")
+                .loadExtractors(Extractor.fromString("b1[]").setName("iterB"));
+        Label found = new Label("found")
+                .loadExtractors(Extractor.fromString("iterA:$.key").setName("found"));
+        Label nxn = new Label("nxn")
+                .loadExtractors(
+                        Extractor.fromString("iterA:$.key").setName("foundA"),
+                        Extractor.fromString("iterB:$.key").setName("foundB")
+                );
+        Test t = new Test("example-test");
+        t.loadLabels(nxn,found,iterB,iterA,b1,a1);
+        List<Label> list = new ArrayList<>(t.labels);
+
+        int a1Index = list.indexOf(a1);
+        int b1Index = list.indexOf(b1);
+        int iterAIndex = list.indexOf(iterA);
+        int iterBIndex = list.indexOf(iterB);
+        int foundIndex = list.indexOf(found);
+        int nxnIndex = list.indexOf(nxn);
+
+        assertTrue(a1Index < iterAIndex);
+        assertTrue(b1Index < iterBIndex);
+        assertTrue(foundIndex > iterAIndex);
+        assertTrue(nxnIndex > iterAIndex);
+        assertTrue(nxnIndex > iterBIndex);
     }
 
     @org.junit.jupiter.api.Test
@@ -87,6 +196,17 @@ public class LabelTest {
         assertTrue(l1 == list.get(0),"foo should be first");
         assertTrue(l3 == list.get(1),"bar should be second");
         assertTrue(l2 == list.get(2),"buz should be last");
+    }
+    @org.junit.jupiter.api.Test
+    public void compareTo_same_name_and_targetLabel_different_jsonpath(){
+        Label l1 = new Label("bar").loadExtractors(Extractor.fromString("foo:$.foo"));
+        Label l2 = new Label("bar").loadExtractors(Extractor.fromString("foo:$.bar"));
+
+        List<Label> list = new ArrayList<>(Arrays.asList(l1,l2));
+        list.sort(Label::compareTo);
+        //assume stable sort
+        assertTrue(l1 == list.get(0),"foo:$.foo should be first");
+        assertTrue(l2 == list.get(1),"foo:$.bar should be second");
     }
 
     @org.junit.jupiter.api.Test
@@ -154,6 +274,17 @@ public class LabelTest {
     }
 
     @org.junit.jupiter.api.Test
+    public void isCircular_unexpected_exception(){
+        Test t = new Test("example-test");
+        Label l1 = new Label("foo",t).loadExtractors(Extractor.fromString("$.foo"));
+        Label l2 = new Label("bar",t).loadExtractors(Extractor.fromString("foo:$.bar"));
+        t.loadLabels(l1,l2);
+
+        assertFalse(l1.isCircular());
+        assertFalse(l2.isCircular());
+
+    }
+    @org.junit.jupiter.api.Test
     public void isCircular_circular_pair(){
         Label l1 = new Label("foo");
         LabelValueExtractor lve1 = new LabelValueExtractor();
@@ -202,7 +333,8 @@ public class LabelTest {
         assertInstanceOf(JsonpathExtractor.class, ex, LabelValueExtractor.FOR_EACH_SUFFIX + LabelValueExtractor.NAME_SEPARATOR + JsonpathExtractor.PREFIX + ".foo.bar should be jsonpath extractor");
         ex = Extractor.fromString(RunMetadataExtractor.PREFIX+"metadata"+RunMetadataExtractor.SUFFIX+LabelValueExtractor.NAME_SEPARATOR+JsonpathExtractor.PREFIX+".foo.bar");
         assertInstanceOf(RunMetadataExtractor.class, ex, RunMetadataExtractor.PREFIX + "metadata" + RunMetadataExtractor.SUFFIX + LabelValueExtractor.NAME_SEPARATOR + JsonpathExtractor.PREFIX + ".foo.bar should be run metadata extractor");
-
+        ex = Extractor.fromString("foo");
+        assertInstanceOf(LabelValueExtractor.class, ex, "foo should be a label value extractor");
 
     }
 

@@ -2,6 +2,8 @@ package io.hyperfoil.tools.exp.horreum.entity.extractor;
 
 import io.hyperfoil.tools.exp.horreum.entity.Label;
 import jakarta.persistence.*;
+import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 
 /**
@@ -15,8 +17,8 @@ public class LabelValueExtractor extends Extractor{
     public static final String NAME_SEPARATOR=":";
 
     /** The id for the label that produces the value this extractor reads **/
-    //@NotNull(message="invalid label reference")//is this breaking other extractors?
-    @ManyToOne
+    @NotNull(message="invalid label reference")//is this breaking other extractors?
+    @ManyToOne(cascade = {CascadeType.PERSIST,CascadeType.MERGE})
     @JoinColumn(name="target_id")
     public Label targetLabel;
     /** Jsonpath in the same style */
@@ -24,7 +26,7 @@ public class LabelValueExtractor extends Extractor{
 
     @Override
     public String toString(){
-        StringBuilder sb = new StringBuilder(targetLabel.name);
+        StringBuilder sb = new StringBuilder(targetLabel!=null ? targetLabel.name: "<no_target>");
         if(forEach){
             sb.append("[]");
         }
@@ -53,7 +55,6 @@ public class LabelValueExtractor extends Extractor{
             if(found==null){
                 found = new Label();
                 found.name = name;
-                System.out.println("CREATING A BLASTEd LABEL REF FOR "+name);
                 //not sure if persisting is necessary, does this assume the new LabelValueExtractor is persisted too?
                 //Label.persist(found);//need some association so that label.name is only unique to it's context (test or schema)
             }

@@ -1,15 +1,27 @@
-package io.hyperfoil.tools.exp.horreum.entity;
+package io.hyperfoil.tools.exp.horreum.entity.extractor;
 
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.JsonpathExtractor;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.LabelValueExtractor;
+import io.hyperfoil.tools.exp.horreum.svc.LabelService;
 import io.quarkus.test.junit.QuarkusTest;
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 @QuarkusTest
 public class LabelValueExtractorTest {
+
+    @Transactional
+    @org.junit.jupiter.api.Test
+    public void persist_invalid_targetLabel(){
+        LabelValueExtractor lve = LabelValueExtractor.fromString("name"+LabelValueExtractor.NAME_SEPARATOR+ JsonpathExtractor.PREFIX+".foo.bar");
+        try{
+            lve.persistAndFlush();
+            fail("should not be able to persist");
+        }catch (Exception ignored){}
+    }
 
     @org.junit.jupiter.api.Test
     public void fromString_justName(){

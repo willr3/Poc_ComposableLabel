@@ -9,20 +9,18 @@ import jakarta.persistence.Table;
 public class RunMetadataExtractor extends Extractor{
     public static final String PREFIX = "{";
     public static final String SUFFIX = "}";
-    public static final String SEPARATOR= ":";
-
-    public String columnName;
+    public String column_name; //eventually support more than just metadata
     public String jsonpath;
 
 
     @Override
     public String toString(){
         StringBuilder sb = new StringBuilder();
-        sb.append("{");
-        sb.append(columnName);
-        sb.append("}");
+        sb.append(PREFIX);
+        sb.append(column_name);
+        sb.append(SUFFIX);
         if(jsonpath!=null && !jsonpath.isBlank()){
-            sb.append(":");
+            sb.append(LabelValueExtractor.NAME_SEPARATOR);
             sb.append(jsonpath);
         }
         return sb.toString();
@@ -36,10 +34,14 @@ public class RunMetadataExtractor extends Extractor{
             String name = input.substring(PREFIX.length(),input.indexOf(SUFFIX));
             rtrn = new RunMetadataExtractor();
             rtrn.name = generateName();
-            rtrn.columnName = name;
+            rtrn.column_name = name;
             input = input.substring(input.indexOf(SUFFIX)+SUFFIX.length());
-            if(input.startsWith(SEPARATOR)){
-                input=input.substring(SEPARATOR.length());
+            if(input.startsWith(LabelValueExtractor.FOR_EACH_SUFFIX)){
+                rtrn.forEach = true;
+                input = input.substring(LabelValueExtractor.FOR_EACH_SUFFIX.length());
+            }
+            if(input.startsWith(LabelValueExtractor.NAME_SEPARATOR)){
+                input=input.substring(LabelValueExtractor.NAME_SEPARATOR.length());
             }
             if(input.startsWith(JsonpathExtractor.PREFIX)){
                 rtrn.jsonpath = input;

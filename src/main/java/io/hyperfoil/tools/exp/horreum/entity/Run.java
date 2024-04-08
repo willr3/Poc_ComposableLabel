@@ -24,5 +24,6 @@ public class Run extends PanacheEntity {
     public Run(long testId,JsonNode data,JsonNode metadata){
         this.test = Test.findById(testId);
         this.data = data;
+        this.metadata = metadata;
     }
 }

@@ -1,4 +1,4 @@
-package io.hyperfoil.tools.exp.horreum.entity;
+package io.hyperfoil.tools.exp.horreum.entity.extractor;
 
 import io.hyperfoil.tools.exp.horreum.entity.extractor.JsonpathExtractor;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.LabelValueExtractor;

@@ -9,6 +9,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Base class for all extractors to represent
+ * name is intentionally not unique for a parent so that Horreum merges matched names
+ * This allows a label to "mutate" with changes to data location
  */
 @Entity
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
@@ -25,7 +27,6 @@ public abstract class Extractor extends PanacheEntity {
     public String name;
 
     public boolean forEach=false;
-
     public Extractor setName(String name){
         this.name = name;
         return this;
@@ -40,7 +41,6 @@ public abstract class Extractor extends PanacheEntity {
             return LabelValueExtractor.fromString(input);
         }
     }
-
     public static String generateName(){
         return "label_"+String.format("%03d",counter.getAndIncrement());
     }

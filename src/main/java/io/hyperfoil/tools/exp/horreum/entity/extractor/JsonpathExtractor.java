@@ -13,7 +13,6 @@ import jakarta.persistence.Table;
 public class JsonpathExtractor extends Extractor{
 
     public static final String PREFIX="$";
-    //public static final String FOR_EACH_SUFFIX="[*]";
     @NotNull
     public String jsonpath;
     @Override
@@ -26,6 +25,8 @@ public class JsonpathExtractor extends Extractor{
         if(input!=null && !input.isBlank()){
             rtrn = new JsonpathExtractor();
             rtrn.name = generateName();
+            //I think starting with a [] is not what we want.
+            // we want to be able to mark the label_value as iterated not iterate applying the extractor
             if(input.startsWith(LabelValueExtractor.FOR_EACH_SUFFIX+LabelValueExtractor.NAME_SEPARATOR)){
                 rtrn.forEach=true;
                 input = input.substring(LabelValueExtractor.FOR_EACH_SUFFIX.length()+LabelValueExtractor.NAME_SEPARATOR.length());
