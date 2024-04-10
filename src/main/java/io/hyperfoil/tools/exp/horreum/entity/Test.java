@@ -5,7 +5,9 @@ import io.hyperfoil.tools.exp.horreum.entity.extractor.LabelValueExtractor;
 import io.hyperfoil.tools.exp.horreum.valid.ValidLabel;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -21,7 +23,7 @@ public class Test extends PanacheEntity {
     @CollectionTable(name = "test_labels")
     @OneToMany(cascade = {CascadeType.PERSIST,CascadeType.MERGE}, fetch = FetchType.EAGER, orphanRemoval = true, mappedBy = "parent")
     //Tried ManyToMany but it resulted in Labels not cascading persist
-    public List<@ValidLabel Label> labels;
+    public List<@NotNull(message="null labels are not supported") @ValidLabel Label> labels;
 
     public Test(){}
     public Test(String name){
@@ -88,6 +90,11 @@ public class Test extends PanacheEntity {
         int sum = inDegrees.values().stream().map(a->a.get()).reduce((a,b)->a+b).get();
         if(sum > 0){
             //this means there are loops!!
+            labels.forEach(l->{
+                if(inDegrees.get(l.name).get() > 0){
+                    rtrn.add(0,l);//they will then go to the back
+                }
+            });
         }
         //reverse because of graph direction
         Collections.reverse(rtrn);

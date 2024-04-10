@@ -7,7 +7,9 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Validator;
+import org.junit.jupiter.api.Disabled;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -52,16 +54,15 @@ public class TestTest {
         try {
             t.persistAndFlush();
             fail("should throw an exception");
-        }catch(Exception ignored){
-
-        }
+        }catch(ConstraintViolationException ignored){}
     }
     @Transactional
     @org.junit.jupiter.api.Test
     public void loadLabels_prevent_circular(){
-        Label l1 = new Label("foo");
+        Test t= new Test("example-test");
+        Label l1 = new Label("foo",t);
         LabelValueExtractor lve1 = new LabelValueExtractor();
-        Label l2 = new Label("bar");
+        Label l2 = new Label("bar",t);
         LabelValueExtractor lve2 = new LabelValueExtractor();
 
         lve1.name="lve1";
@@ -71,13 +72,13 @@ public class TestTest {
         lve2.targetLabel=l1;
         l2.extractors=Arrays.asList(lve2);
 
-        Test t= new Test("example-test");
         try {
             t.loadLabels(l1, l2);
+            assertNotNull(t.labels);
+            assertEquals(2,t.labels.size());
             t.persistAndFlush();//
             fail("validation check on looped labels should prevent this");
-        }catch(Exception ignored){
-        }
+        }catch(ConstraintViolationException ignored){}
     }
 
     @org.junit.jupiter.api.Test
