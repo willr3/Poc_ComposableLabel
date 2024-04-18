@@ -1,17 +1,14 @@
 package io.hyperfoil.tools.exp.horreum.entity;
 
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.LabelValueExtractor;
 import io.hyperfoil.tools.exp.horreum.valid.ValidLabel;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
-import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 @Entity
@@ -35,14 +32,14 @@ public class Test extends PanacheEntity {
         return this;
     }
     public boolean hasTempLabel(Extractor e){
-        return e instanceof LabelValueExtractor
+        return Extractor.Type.VALUE.equals(e.type)
         && (
             (
                 !e.isPersistent()
-                && !((LabelValueExtractor)e).targetLabel.isPersistent()
+                && !e.targetLabel.isPersistent()
             )
             || (
-                !((LabelValueExtractor) e).targetLabel.parent.equals(this)
+                !e.targetLabel.parent.equals(this)
             )
         );
     }
@@ -57,8 +54,7 @@ public class Test extends PanacheEntity {
         });
         labels.forEach(l->{
             l.extractors.stream()
-                    .filter(e->e instanceof LabelValueExtractor)
-                    .map(e->(LabelValueExtractor)e)
+                    .filter(e->Extractor.Type.VALUE.equals(e.type))
                     .forEach(lve->{
                         if(inDegrees.containsKey(lve.targetLabel.name)) {
                             inDegrees.get(lve.targetLabel.name).incrementAndGet();
@@ -76,8 +72,7 @@ public class Test extends PanacheEntity {
             Label l = q.poll();
             rtrn.add(l);
             l.extractors.stream()
-                    .filter(e->e instanceof LabelValueExtractor)
-                    .map(e->(LabelValueExtractor)e)
+                    .filter(e->Extractor.Type.VALUE.equals(e.type))
                     .forEach(lve->{
                         if(inDegrees.containsKey(lve.targetLabel.name)) {
                             int newDegree = inDegrees.get(lve.targetLabel.name).decrementAndGet();
@@ -110,7 +105,6 @@ public class Test extends PanacheEntity {
             Map<String,Label> byName = labels.stream().collect(Collectors.toMap(l->l.name,l->l));
             labels.stream().flatMap(l->l.extractors.stream())
                     .filter(this::hasTempLabel)
-                    .map(e-> (LabelValueExtractor)e)
                     .forEach(e->{
                         String targetName = e.targetLabel.name;
                         if(byName.containsKey(targetName)){

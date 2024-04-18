@@ -1,9 +1,6 @@
 package io.hyperfoil.tools.exp.horreum.entity;
 
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.JsonpathExtractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.LabelValueExtractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.RunMetadataExtractor;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.validation.ConstraintViolation;
@@ -79,8 +76,8 @@ public class LabelTest {
                 );
         Label jenkinsBuild = new Label("build",t)
                 .loadExtractors(Extractor.fromString(
-                        RunMetadataExtractor.PREFIX+"metadata"+RunMetadataExtractor.SUFFIX+
-                                LabelValueExtractor.NAME_SEPARATOR+ JsonpathExtractor.PREFIX+".jenkins.build").setName("build")
+                        Extractor.METADATA_PREFIX+"metadata"+Extractor.METADATA_SUFFIX+
+                                Extractor.NAME_SEPARATOR+ Extractor.PREFIX+".jenkins.build").setName("build")
                 );
         nxn.multiType= Label.MultiIterationType.NxN;
 
@@ -216,7 +213,8 @@ public class LabelTest {
         assertFalse(l1.isCircular(),"label without label value extractor");
 
         //l2 -> l1 (l2 depends on l1)
-        LabelValueExtractor lve2_1 = new LabelValueExtractor();
+        Extractor lve2_1 = new Extractor();
+        lve2_1.type = Extractor.Type.VALUE;
         lve2_1.targetLabel = l1;
         lve2_1.name="lve";
         Label l2 = new Label("l2");
@@ -226,11 +224,13 @@ public class LabelTest {
 
 
         //l3 -> [l2,l1], l2 -> l1 (l3 depends on l2 and l1, l2 depends on l1
-        LabelValueExtractor lve3_1 = new LabelValueExtractor();
+        Extractor lve3_1 = new Extractor();
+        lve3_1.type = Extractor.Type.VALUE;
         lve3_1.targetLabel = l1;
         lve3_1.name="lve3_1";
 
-        LabelValueExtractor lve3_2 = new LabelValueExtractor();
+        Extractor lve3_2 = new Extractor();
+        lve3_2.type = Extractor.Type.VALUE;
         lve3_2.targetLabel = l2;
         lve3_2.name="lve3_2";
 
@@ -248,10 +248,12 @@ public class LabelTest {
 
         //l2 -> [l1, l1]
         Label l2 = new Label("l2");
-        LabelValueExtractor lve2_1 = new LabelValueExtractor();
+        Extractor lve2_1 = new Extractor();
+        lve2_1.type = Extractor.Type.VALUE;
         lve2_1.targetLabel = l1;
         lve2_1.name="lve2_1";
-        LabelValueExtractor lve2_2 = new LabelValueExtractor();
+        Extractor lve2_2 = new Extractor();
+        lve2_2.type = Extractor.Type.VALUE;
         lve2_2.targetLabel = l1;
         lve2_2.name="lve2_1";
 
@@ -265,7 +267,8 @@ public class LabelTest {
     @org.junit.jupiter.api.Test
     public void isCircular_self_reference(){
         Label l = new Label("foo");
-        LabelValueExtractor lve = new LabelValueExtractor();
+        Extractor lve = new Extractor();
+        lve.type = Extractor.Type.VALUE;
         lve.name="lve";
         lve.targetLabel=l;
         l.extractors = Arrays.asList(lve);
@@ -287,9 +290,12 @@ public class LabelTest {
     @org.junit.jupiter.api.Test
     public void isCircular_circular_pair(){
         Label l1 = new Label("foo");
-        LabelValueExtractor lve1 = new LabelValueExtractor();
+        Extractor lve1 = new Extractor();
+        lve1.type = Extractor.Type.VALUE;
         Label l2 = new Label("bar");
-        LabelValueExtractor lve2 = new LabelValueExtractor();
+        Extractor lve2 = new Extractor();
+        lve2.type = Extractor.Type.VALUE;
+
 
         lve1.name="lve1";
         lve1.targetLabel=l2;
@@ -305,11 +311,14 @@ public class LabelTest {
     @org.junit.jupiter.api.Test
     public void isCircular_circular_trio(){
         Label l1 = new Label("foo");
-        LabelValueExtractor lve1 = new LabelValueExtractor();
+        Extractor lve1 = new Extractor();
+        lve1.type = Extractor.Type.VALUE;
         Label l2 = new Label("bar");
-        LabelValueExtractor lve2 = new LabelValueExtractor();
+        Extractor lve2 = new Extractor();
+        lve2.type = Extractor.Type.VALUE;
         Label l3 = new Label("biz");
-        LabelValueExtractor lve3 = new LabelValueExtractor();
+        Extractor lve3 = new Extractor();
+        lve3.type = Extractor.Type.VALUE;
 
         lve1.name="lve1";
         lve1.targetLabel=l2;
@@ -329,12 +338,16 @@ public class LabelTest {
     @org.junit.jupiter.api.Test
     public void fromString_instanceof(){
         Extractor ex;
-        ex = Extractor.fromString(LabelValueExtractor.FOR_EACH_SUFFIX+LabelValueExtractor.NAME_SEPARATOR+ JsonpathExtractor.PREFIX+".foo.bar");
-        assertInstanceOf(JsonpathExtractor.class, ex, LabelValueExtractor.FOR_EACH_SUFFIX + LabelValueExtractor.NAME_SEPARATOR + JsonpathExtractor.PREFIX + ".foo.bar should be jsonpath extractor");
-        ex = Extractor.fromString(RunMetadataExtractor.PREFIX+"metadata"+RunMetadataExtractor.SUFFIX+LabelValueExtractor.NAME_SEPARATOR+JsonpathExtractor.PREFIX+".foo.bar");
-        assertInstanceOf(RunMetadataExtractor.class, ex, RunMetadataExtractor.PREFIX + "metadata" + RunMetadataExtractor.SUFFIX + LabelValueExtractor.NAME_SEPARATOR + JsonpathExtractor.PREFIX + ".foo.bar should be run metadata extractor");
+        ex = Extractor.fromString(Extractor.FOR_EACH_SUFFIX+Extractor.NAME_SEPARATOR+ Extractor.PREFIX+".foo.bar");
+        assertInstanceOf(Extractor.class, ex, Extractor.FOR_EACH_SUFFIX + Extractor.NAME_SEPARATOR + Extractor.PREFIX + ".foo.bar should be jsonpath extractor");
+        assertEquals(Extractor.Type.PATH,ex.type);
+        ex = Extractor.fromString(Extractor.METADATA_PREFIX+"metadata"+Extractor.METADATA_SUFFIX+Extractor.NAME_SEPARATOR+Extractor.PREFIX+".foo.bar");
+        assertEquals(Extractor.Type.METADATA,ex.type);
+        assertInstanceOf(Extractor.class, ex, Extractor.METADATA_PREFIX + "metadata" + Extractor.METADATA_SUFFIX + Extractor.NAME_SEPARATOR + Extractor.PREFIX + ".foo.bar should be run metadata extractor");
+        assertEquals(Extractor.Type.METADATA,ex.type);
         ex = Extractor.fromString("foo");
-        assertInstanceOf(LabelValueExtractor.class, ex, "foo should be a label value extractor");
+        assertInstanceOf(Extractor.class, ex, "foo should be a label value extractor");
+        assertEquals(Extractor.Type.VALUE,ex.type);
 
     }
 

@@ -8,9 +8,6 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.TextNode;
 import io.hyperfoil.tools.exp.horreum.entity.*;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.JsonpathExtractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.LabelValueExtractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.RunMetadataExtractor;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -161,6 +158,9 @@ public class LabelServiceTest {
         //It's a text node because it is quoted in the json
         assertInstanceOf(TextNode.class,extractedValues.get(l.name));
     }
+    //case when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' and m.foreach and jsonb_typeof(m.lv_data) = 'array'
+
+
     //case when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' and m.lv_iterated
     @org.junit.jupiter.api.Test
     public void calculateExtractedValuesWithIterated_LabelValueExtractor_iterated_jsonpath() throws JsonProcessingException {
@@ -226,7 +226,7 @@ public class LabelServiceTest {
                 .setTargetSchema("uri:keyed")
                 .loadExtractors(Extractor.fromString("a1[]").setName("iterA"));
         Label iterAKey = new Label("iterAKey",t)
-                //.setTargetSchema("uri:keyed") // causes an error when it targets a schema
+                .setTargetSchema("uri:different:keyed")
                 .loadExtractors(Extractor.fromString("a1[]:$.key").setName("iterAKey"));
         Label iterB = new Label("iterB",t)
                 .setTargetSchema("uri:keyed")
@@ -242,8 +242,8 @@ public class LabelServiceTest {
             );
         Label jenkinsBuild = new Label("build",t)
             .loadExtractors(Extractor.fromString(
-                RunMetadataExtractor.PREFIX+"metadata"+RunMetadataExtractor.SUFFIX+
-                LabelValueExtractor.NAME_SEPARATOR+ JsonpathExtractor.PREFIX+".jenkins.build").setName("build")
+                Extractor.METADATA_PREFIX+"metadata"+ Extractor.METADATA_SUFFIX+
+                Extractor.NAME_SEPARATOR+ Extractor.PREFIX+".jenkins.build").setName("build")
             );
         nxn.multiType= Label.MultiIterationType.NxN;
 

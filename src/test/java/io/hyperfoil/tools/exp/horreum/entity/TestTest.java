@@ -1,7 +1,6 @@
 package io.hyperfoil.tools.exp.horreum.entity;
 
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.LabelValueExtractor;
 import io.hyperfoil.tools.exp.horreum.svc.LabelService;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -61,9 +60,11 @@ public class TestTest {
     public void loadLabels_prevent_circular(){
         Test t= new Test("example-test");
         Label l1 = new Label("foo",t);
-        LabelValueExtractor lve1 = new LabelValueExtractor();
+        Extractor lve1 = new Extractor();
+        lve1.type = Extractor.Type.VALUE;
         Label l2 = new Label("bar",t);
-        LabelValueExtractor lve2 = new LabelValueExtractor();
+        Extractor lve2 = new Extractor();
+        lve2.type = Extractor.Type.VALUE;
 
         lve1.name="lve1";
         lve1.targetLabel=l2;

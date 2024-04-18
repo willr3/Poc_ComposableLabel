@@ -1,8 +1,6 @@
 package io.hyperfoil.tools.exp.horreum.entity;
 
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.JsonpathExtractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.LabelValueExtractor;
 import io.hyperfoil.tools.exp.horreum.valid.ValidTarget;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
@@ -98,7 +96,7 @@ public class Label extends PanacheEntity implements Comparable<Label> {
 
 
     public long labelValueExtractorCount(){
-        return extractors.stream().filter(e->e instanceof LabelValueExtractor).count();
+        return extractors.stream().filter(e-> Extractor.Type.VALUE.equals(e.type)).count();
     }
     public long forEachCount(){
         return extractors.stream().filter(e->e.forEach).count();
@@ -107,14 +105,14 @@ public class Label extends PanacheEntity implements Comparable<Label> {
         return extractors.stream().anyMatch(e->e.forEach);
     }
     public boolean usesOnlyJsonpathExtractor(){
-        return extractors.stream().allMatch(e->e instanceof JsonpathExtractor);
+        return extractors.stream().allMatch(e->Extractor.Type.PATH.equals(e.type));
     }
     public boolean usesLabelValueExtractor(){
-        return extractors.stream().anyMatch(e->e instanceof LabelValueExtractor);
+        return extractors.stream().anyMatch(e->Extractor.Type.VALUE.equals(e.type));
     }
     public boolean dependsOn(Label l){
         //do not replace id == l.id with .equals because id can be null
-        return extractors.stream().anyMatch(e-> e instanceof LabelValueExtractor && ( (LabelValueExtractor)e).targetLabel.id == l.id && ( (LabelValueExtractor)e).targetLabel.name.equals(l.name));
+        return extractors.stream().anyMatch(e->Extractor.Type.VALUE.equals(e.type) && e.targetLabel.id == l.id && (e).targetLabel.name.equals(l.name));
     }
 
     /**
@@ -127,8 +125,8 @@ public class Label extends PanacheEntity implements Comparable<Label> {
         }
         Queue<Label> todo = new PriorityQueue<>();
         extractors.stream()
-                .filter(e->e instanceof LabelValueExtractor)
-                .map(e->((LabelValueExtractor) e).targetLabel).forEach(todo::add);
+                .filter(e->Extractor.Type.VALUE.equals(e.type))
+                .map(e->e.targetLabel).forEach(todo::add);
         Label target;
         boolean ok = true;
         while( ok && (target = todo.poll()) !=null ){
@@ -137,8 +135,8 @@ public class Label extends PanacheEntity implements Comparable<Label> {
             }
             if(target.extractors!=null) {
                 List<Label> targetLabels = target.extractors.stream()
-                        .filter(e -> e instanceof LabelValueExtractor)
-                        .map(e -> ((LabelValueExtractor) e).targetLabel)
+                        .filter(e->Extractor.Type.VALUE.equals(e.type))
+                        .map(e->e.targetLabel)
                         .toList();
                 todo.addAll(targetLabels);
             }else{

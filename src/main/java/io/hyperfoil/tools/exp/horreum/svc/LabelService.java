@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.hyperfoil.tools.exp.horreum.entity.*;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.LabelValueExtractor;
 import io.hyperfoil.tools.exp.horreum.pasted.JsonBinaryType;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -49,8 +48,8 @@ public class LabelService {
             if (extractedValues.size() == 1) {
                 Extractor e = l.extractors.iterator().next();
                 LabelValue target = null;
-                if(e instanceof LabelValueExtractor){
-                    target = getLabelValue(runId,((LabelValueExtractor)e).targetLabel.id);
+                if(Extractor.Type.VALUE.equals(e.type)){
+                    target = getLabelValue(runId,e.targetLabel.id);
                 }
                 if(target == null){
                     //This is a problem but should not happen thanks to validation
@@ -98,7 +97,7 @@ public class LabelService {
                 case Length :
 
                     int maxLength = l.extractors.stream()
-                            .filter(e -> e instanceof LabelValueExtractor && ((LabelValueExtractor)e).targetLabel.hasForEach() && extractedValues.hasNonNull(e.name))
+                            .filter(e -> Extractor.Type.VALUE.equals(e.type)&& e.targetLabel.hasForEach() && extractedValues.hasNonNull(e.name))
                             .map(e->extractedValues.get(e.name).size()).max(Integer::compareTo).orElse(1);
 
                     for(int i=0; i < maxLength; i++){
@@ -115,7 +114,8 @@ public class LabelService {
                             }
                             //create LvRef (if needed)
                             if(extractedValues.isIterated(e.name)){
-                                LabelValue target = getLabelValue(runId,((LabelValueExtractor)e).targetLabel.id);
+                                //this is N db queries
+                                LabelValue target = getLabelValue(runId,e.targetLabel.id);
                                 if(target == null){
                                     //no bueno
                                 }
@@ -136,7 +136,7 @@ public class LabelService {
                     List<Map<String,Integer>> references = new ArrayList<>();
                     for(Extractor e : l.extractors){
 
-                        if( extractedValues.isIterated(e.name) || (e.forEach && e instanceof LabelValueExtractor && extractedValues.hasNonNull(e.name)) ) {
+                        if( extractedValues.isIterated(e.name) || (e.forEach && Extractor.Type.VALUE.equals(e.type) && extractedValues.hasNonNull(e.name)) ) {
                             int length = extractedValues.get(e.name).size();
                             if(references.isEmpty()){
                                 for(int i=0; i<length; i++){
@@ -163,7 +163,7 @@ public class LabelService {
                         for(Extractor e : l.extractors){
                             if(map.containsKey(e.name)){
                                 int targetIndex = map.get(e.name);
-                                LabelValue target = getLabelValue(runId,((LabelValueExtractor)e).targetLabel.id);
+                                LabelValue target = getLabelValue(runId,e.targetLabel.id);
                                 if(target == null){
                                     //yikes
                                 }
@@ -192,6 +192,9 @@ public class LabelService {
         }
     }
 
+    //ExtractedValues assumes one jsonnode for each extractor name.
+    //a multilabelvalue would potentially have more than 1 and would have a UID that needs to be tracked
+    //could store the multiple
     public static class ExtractedValues {
         private Map<String,Boolean> isIterated = new HashMap<>();
         private Map<String, JsonNode> data = new HashMap<>();
@@ -467,6 +470,7 @@ public class LabelService {
         ExtractedValues rtrn = new ExtractedValues();
 
         //debugging again
+        //a for-each that isn't iterated...?
         //when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' and m.foreach and jsonb_typeof(m.lv_data) = 'array' then extract_path_array(m.lv_data,m.jsonpath::::jsonpath)
 
         //do we need to check jsonb_typeof
@@ -474,22 +478,25 @@ public class LabelService {
         //unchecked is how you know the code is great :)
         @SuppressWarnings("unchecked")
         List<Object[]> found = Label.getEntityManager().createNativeQuery("""
-            with m as (select e.name, e.dtype, e.jsonpath, e.foreach, e.column_name, lv.data as lv_data, lv.iterated as lv_iterated, r.data as run_data, r.metadata as run_metadata from extractor e left join label_values lv on e.target_id = lv.label_id, run r  where e.parent_id = :label_id and (lv.run_id = :run_id or lv.run_id is null) and r.id = :run_id),
-            n as (select m.name, m.dtype, m.jsonpath, m.foreach, m.lv_iterated ,m.lv_data, (case
-                when m.dtype = 'JsonpathExtractor' and m.jsonpath is not null then jsonb_path_query_array(m.run_data,m.jsonpath::::jsonpath)
-                when m.dtype = 'RunMetadataExtractor' and m.jsonpath is not null and m.column_name = 'metadata' then jsonb_path_query_array(m.run_metadata,m.jsonpath::::jsonpath)
+            with m as (select e.name, e.type, e.jsonpath, e.foreach, e.column_name, lv.data as lv_data, lv.iterated as lv_iterated, r.data as run_data, r.metadata as run_metadata from extractor e left join label_values lv on e.target_id = lv.label_id, run r  where e.parent_id = :label_id and (lv.run_id = :run_id or lv.run_id is null) and r.id = :run_id),
+            n as (select m.name, m.type, m.jsonpath, m.foreach, m.lv_iterated ,m.lv_data, (case
+                when m.type = 'PATH' and m.jsonpath is not null then jsonb_path_query_array(m.run_data,m.jsonpath::::jsonpath)
+                when m.type = 'METADATA' and m.jsonpath is not null and m.column_name = 'metadata' then jsonb_path_query_array(m.run_metadata,m.jsonpath::::jsonpath)                
+                when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' and m.lv_iterated then extract_path_array(m.lv_data,m.jsonpath::::jsonpath)
                 
-                when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' and m.lv_iterated then extract_path_array(m.lv_data,m.jsonpath::::jsonpath)
-                when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' then jsonb_path_query_array(m.lv_data,m.jsonpath::::jsonpath)
-                when m.dtype = 'LabelValueExtractor' and (m.jsonpath is null or m.jsonpath = '') then to_jsonb(ARRAY[m.lv_data])
+                when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' then jsonb_path_query_array(m.lv_data,m.jsonpath::::jsonpath)
+                when m.type = 'VALUE' and (m.jsonpath is null or m.jsonpath = '') then to_jsonb(ARRAY[m.lv_data])
                 else '[]'::::jsonb end) as found from m)
             select n.name as name,(case when jsonb_array_length(n.found) > 1 then n.found else n.found->0 end) as data, n.lv_iterated as lv_iterated from n
         """).setParameter("run_id",runId).setParameter("label_id",l.id)
+                //TODO add logging in else '[]'
                 .unwrap(NativeQuery.class)
                 .addScalar("name",String.class)
                 .addScalar("data", JsonBinaryType.INSTANCE)
                 .addScalar("lv_iterated",Boolean.class)
                 .getResultList();
+
+
         if(found.isEmpty()){
             //TODO alert error or assume the data missed all the labels?
         }else {
