@@ -31,7 +31,6 @@ public final class Extractor extends PanacheEntity {
     public static enum Type {PATH, VALUE, METADATA}
 
     @NotNull(message="extractor name cannot be null")
-    @Pattern(regexp = "^[^{].*[^}]$",message = "Extractor names cannot start with '{' or end with '}'")
     public String name;
 
     @NotNull

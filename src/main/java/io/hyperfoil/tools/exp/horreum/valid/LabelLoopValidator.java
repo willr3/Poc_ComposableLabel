@@ -15,7 +15,21 @@ public class LabelLoopValidator  implements ConstraintValidator<ValidLabel, Labe
 
     @Override
     public boolean isValid(Label label, ConstraintValidatorContext constraintValidatorContext) {
-        boolean rtrn = label == null || !label.isCircular();
+        boolean rtrn = true;
+        if(label==null){
+            constraintValidatorContext.buildConstraintViolationWithTemplate("null labels are not valid").addConstraintViolation();
+            return false;
+        }
+        if(label.isCircular()){
+            constraintValidatorContext.buildConstraintViolationWithTemplate("labels cannot create a circular reference with other label's extractors").addConstraintViolation();
+            rtrn =false;
+        }
+        if(label.name == null || label.name.isBlank()){
+            constraintValidatorContext.buildConstraintViolationWithTemplate("label names cannot be null or empty").addConstraintViolation();
+        }
+        if(label.name.startsWith("$")){
+
+        }
         return rtrn;
     }
 }

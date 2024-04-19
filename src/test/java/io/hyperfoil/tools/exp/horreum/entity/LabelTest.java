@@ -14,25 +14,6 @@ import static org.junit.jupiter.api.Assertions.*;
 @QuarkusTest
 public class LabelTest {
 
-
-    public static class CompareLabels implements Comparator<Label> {
-
-        @Override
-        public int compare(Label o1, Label o2) {
-            int rtrn = 0;
-            if(o1.usesLabelValueExtractor() && !o2.usesLabelValueExtractor()){
-                rtrn = -1;//o1 is less than 02
-            }else if (o2.usesLabelValueExtractor() && !o1.usesLabelValueExtractor()){
-                rtrn = 1;//o2 is less than o1
-            }else if (o1.dependsOn(o2)){
-                rtrn = -1;//o1 has to come after o2
-            }else if (o2.dependsOn(o1)) {
-                rtrn = 1;//o1 must come before o2
-            }
-            return rtrn;
-        }
-    }
-
     @Inject
     Validator validator;
 
@@ -261,7 +242,6 @@ public class LabelTest {
 
         assertFalse(l1.isCircular(),"only label value extractors can be circular");
         assertFalse(l2.isCircular(),"having duplicate dependencies is not circular");
-
     }
 
     @org.junit.jupiter.api.Test
@@ -285,7 +265,6 @@ public class LabelTest {
 
         assertFalse(l1.isCircular());
         assertFalse(l2.isCircular());
-
     }
     @org.junit.jupiter.api.Test
     public void isCircular_circular_pair(){
@@ -306,7 +285,6 @@ public class LabelTest {
 
         assertTrue(l1.isCircular(),"pair reference is circular");
         assertTrue(l2.isCircular(),"pair reference is circular");
-
     }
     @org.junit.jupiter.api.Test
     public void isCircular_circular_trio(){
@@ -348,7 +326,29 @@ public class LabelTest {
         ex = Extractor.fromString("foo");
         assertInstanceOf(Extractor.class, ex, "foo should be a label value extractor");
         assertEquals(Extractor.Type.VALUE,ex.type);
-
     }
-
+    @org.junit.jupiter.api.Test
+    public void name_surrounded_by_curly_bracket(){
+        Label l = new Label("{name}");
+        Set<ConstraintViolation<Label>> constraints = validator.validate(l);
+        assertFalse(constraints.isEmpty(),"expect constraints: "+constraints);
+    }
+    @org.junit.jupiter.api.Test
+    public void name_starts_with_curly_bracket(){
+        Label l = new Label("{name");
+        Set<ConstraintViolation<Label>> constraints = validator.validate(l);
+        assertFalse(constraints.isEmpty(),"expect constraints: "+constraints);
+    }
+    @org.junit.jupiter.api.Test
+    public void name_ends_with_curly_bracket(){
+        Label l = new Label("name}");
+        Set<ConstraintViolation<Label>> constraints = validator.validate(l);
+        assertFalse(constraints.isEmpty(),"expect constraints: "+constraints);
+    }
+    @org.junit.jupiter.api.Test
+    public void name_starts_with_dollar(){
+        Label l = new Label("$name");
+        Set<ConstraintViolation<Label>> constraints = validator.validate(l);
+        assertFalse(constraints.isEmpty(),"expect constraints: "+constraints);
+    }
 }

@@ -5,6 +5,7 @@ import io.hyperfoil.tools.exp.horreum.valid.ValidTarget;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -20,7 +21,10 @@ public class Label extends PanacheEntity implements Comparable<Label> {
 
     public static enum MultiIterationType { Length, NxN}
     public static enum ScalarVariableMethod { First, All}
-    
+
+
+    @Pattern(regexp = "^[^{].*[^}]$",message = "Extractor names cannot start with '{' or end with '}'")
+    @Pattern(regexp = "^[^$].+",message = "Extractor name cannot start with '$'")
     public String name;
 
     @NotNull(message = "label must reference a test")
