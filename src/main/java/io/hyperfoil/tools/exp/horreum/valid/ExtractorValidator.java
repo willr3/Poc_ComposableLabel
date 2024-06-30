@@ -36,7 +36,6 @@ public class ExtractorValidator implements ConstraintValidator<ValidTarget, Extr
                 }else if(!extractor.parent.parent.equals(extractor.targetLabel.parent)){
                     constraintValidatorContext.buildConstraintViolationWithTemplate("label value extractor must extract from a label in the same test").addConstraintViolation();
                 }
-
             }
             case METADATA -> {
                 if(extractor.column_name == null || !Arrays.asList("metadata").contains(extractor.column_name)){

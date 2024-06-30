@@ -28,7 +28,7 @@ public final class Extractor extends PanacheEntity {
     @JoinColumn(name = "parent_id")
     public Label parent;
 
-    public static enum Type {PATH, VALUE, METADATA}
+    public enum Type {PATH, VALUE, METADATA}
 
     @NotNull(message="extractor name cannot be null")
     public String name;

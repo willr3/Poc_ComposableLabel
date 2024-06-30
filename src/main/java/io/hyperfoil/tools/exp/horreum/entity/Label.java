@@ -25,6 +25,7 @@ public class Label extends PanacheEntity implements Comparable<Label> {
 
     @Pattern(regexp = "^[^{].*[^}]$",message = "Extractor names cannot start with '{' or end with '}'")
     @Pattern(regexp = "^[^$].+",message = "Extractor name cannot start with '$'")
+    @Pattern(regexp = ".*(?<!\\[])$",message = "Extractor name cannot end with '[]'")
     public String name;
 
     @NotNull(message = "label must reference a test")

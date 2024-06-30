@@ -351,4 +351,10 @@ public class LabelTest {
         Set<ConstraintViolation<Label>> constraints = validator.validate(l);
         assertFalse(constraints.isEmpty(),"expect constraints: "+constraints);
     }
+    @org.junit.jupiter.api.Test
+    public void name_ends_with_iteration_indicator(){
+        Label l = new Label("name"+Extractor.FOR_EACH_SUFFIX);
+        Set<ConstraintViolation<Label>> constraints = validator.validate(l);
+        assertFalse(constraints.isEmpty(),"expect constraints: "+constraints);
+    }
 }

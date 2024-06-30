@@ -57,7 +57,7 @@ public class LabelService {
                 String key = e.name;
                 JsonNode data = extractedValues.get(key);
                 labelValue.data = data;
-
+                //TODO also check that data is an array?
                 if (labelValue.iterated && target!=null) {
                     for(int i=0; i<data.size(); i++){
                         LabelValuePointer pointer = LabelValuePointer.create(i,labelValue,i,target);
@@ -292,6 +292,7 @@ public class LabelService {
 
     //get the labelValues for all instances of a target schema for a test
     //how is this different from getValueMapForTest? getValueMapForTest doesn't work :)
+    //could also have a labelValues based on label name, would that be useful? label name would not be merge-able across multiple labels
     public List<ValueMap> labelValues(String schema,long testId, List<String> include, List<String> exclude){
         List<ValueMap> rtrn = new ArrayList<>();
         String labelNameFilter = "";
@@ -313,7 +314,7 @@ public class LabelService {
         """
         with bag as (
             select
-                r.test_id, lv.run_id, lvp.target_label_id, lvp.targetindex, l.name,
+                r.test_id, lv.run_id, lt.id as target_label_id, lvp.targetindex, l.name,
                 jsonb_agg(lv.data -> lvp.childindex::::int) as data
             from label_values lv
                 right join label_value_pointer lvp on lvp.child_label_id = lv.label_id and lvp.child_run_id = lv.run_id
@@ -322,7 +323,7 @@ public class LabelService {
                 left join run r on r.id = lv.run_id
             where lt.target_schema = :schema and r.test_id = :testId
             LABEL_NAME_FILTER
-            group by r.test_id,lv.run_id,lvp.target_label_id,lvp.targetindex, l.name
+            group by r.test_id,lv.run_id,lt.id,lvp.targetindex, l.name
         )
         select
             targetindex,target_label_id, run_id, test_id,
@@ -331,14 +332,14 @@ public class LabelService {
         group by test_id,run_id,target_label_id,targetindex;
         """.replace("LABEL_NAME_FILTER",labelNameFilter)
         ).setParameter("schema",schema)
-                .setParameter("testId",testId)
-                .unwrap(NativeQuery.class)
-                .addScalar("targetindex",Long.class)
-                .addScalar("target_label_id",Long.class)
-                .addScalar("run_id",Long.class)
-                .addScalar("test_id",Long.class)
-                .addScalar("data",JsonBinaryType.INSTANCE)
-                .list();
+        .setParameter("testId",testId)
+        .unwrap(NativeQuery.class)
+        .addScalar("targetindex",Long.class)
+        .addScalar("target_label_id",Long.class)
+        .addScalar("run_id",Long.class)
+        .addScalar("test_id",Long.class)
+        .addScalar("data",JsonBinaryType.INSTANCE)
+        .list();
         for(Object[] object : found){
             // tuple (labelId,index) should uniquely identify which label_value entry "owns" the ValueMap for the given test and run
             // note a label_value can have multiple values that are associated with a (labelId,index) if it is NxN
@@ -481,7 +482,7 @@ public class LabelService {
             with m as (select e.name, e.type, e.jsonpath, e.foreach, e.column_name, lv.data as lv_data, lv.iterated as lv_iterated, r.data as run_data, r.metadata as run_metadata from extractor e left join label_values lv on e.target_id = lv.label_id, run r  where e.parent_id = :label_id and (lv.run_id = :run_id or lv.run_id is null) and r.id = :run_id),
             n as (select m.name, m.type, m.jsonpath, m.foreach, m.lv_iterated ,m.lv_data, (case
                 when m.type = 'PATH' and m.jsonpath is not null then jsonb_path_query_array(m.run_data,m.jsonpath::::jsonpath)
-                when m.type = 'METADATA' and m.jsonpath is not null and m.column_name = 'metadata' then jsonb_path_query_array(m.run_metadata,m.jsonpath::::jsonpath)                
+                when m.type = 'METADATA' and m.jsonpath is not null and m.column_name = 'metadata' then jsonb_path_query_array(m.run_metadata,m.jsonpath::::jsonpath)
                 when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' and m.lv_iterated then extract_path_array(m.lv_data,m.jsonpath::::jsonpath)
                 
                 when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' then jsonb_path_query_array(m.lv_data,m.jsonpath::::jsonpath)
