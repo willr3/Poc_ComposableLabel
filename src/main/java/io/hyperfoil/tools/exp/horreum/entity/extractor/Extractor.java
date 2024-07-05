@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * This allows a label to "mutate" with changes to data location
  */
 @Entity
-public final class Extractor extends PanacheEntity {
+public class Extractor extends PanacheEntity {
     public static final String PREFIX="$";
     public static final String FOR_EACH_SUFFIX = "[]";
     public static final String NAME_SEPARATOR=":";
