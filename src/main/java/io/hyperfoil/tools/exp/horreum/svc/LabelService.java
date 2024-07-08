@@ -11,11 +11,9 @@ import io.hyperfoil.tools.exp.horreum.pasted.JsonBinaryType;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.POST;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.*;
 import org.hibernate.query.NativeQuery;
+import org.jboss.resteasy.reactive.Separator;
 
 import java.util.*;
 
@@ -291,7 +289,6 @@ public class LabelService {
     }
 
     //get the labelValues for all instances of a target schema for a test
-    //how is this different from getValueMapForTest? getValueMapForTest doesn't work :)
     //could also have a labelValues based on label name, would that be useful? label name would not be merge-able across multiple labels
     public List<ValueMap> labelValues(String schema,long testId, List<String> include, List<String> exclude){
         List<ValueMap> rtrn = new ArrayList<>();
@@ -350,6 +347,89 @@ public class LabelService {
             ObjectNode data = (ObjectNode)object[4];
 
             ValueMap vm = new ValueMap(data,index,labelId,runId,testId);
+            rtrn.add(vm);
+        }
+        return rtrn;
+    }
+    //This is the labelValues endpoint that more closely matches what currently exists in Horreum if run = dataset
+    //filter,before,after,sort,direction,limit,page, and multiFilter are not yet supported
+    List<LabelService.ValueMap> labelValues(
+            long  testId,
+            String filter,
+            String before,
+            String after,
+            String sort,
+            String direction,
+            int limit,
+            int page,
+            List<String> include,
+            List<String> exclude,
+            boolean multiFilter){
+        List<ValueMap> rtrn = new ArrayList<>();
+        String labelNameFilter = "";
+        if (include!=null && !include.isEmpty()){
+            if(exclude!=null && !exclude.isEmpty()){
+                include = new ArrayList<>(include);
+                include.removeAll(exclude);
+            }
+            if(!include.isEmpty()) {
+                labelNameFilter = " AND l.name in :include";
+            }
+        }
+        //includeExcludeSql is empty if include did not contain entries after exclude removal
+        if(labelNameFilter.isEmpty() && exclude!=null && !exclude.isEmpty()){
+            labelNameFilter=" AND l.name NOT in :exclude";
+        }
+
+        //noinspection rawtypes
+        NativeQuery query = (NativeQuery) em.createNativeQuery(
+                        """
+                        with bag as (
+                            select
+                                r.test_id, lv.run_id, l.name,
+                                jsonb_agg(lv.data -> lvp.childindex::::int) as data
+                            from label_values lv
+                                right join label_value_pointer lvp on lvp.child_label_id = lv.label_id and lvp.child_run_id = lv.run_id
+                                left join label l on l.id = lv.label_id
+                                left join label lt on lt.id = lvp.target_label_id
+                                left join run r on r.id = lv.run_id
+                            where r.test_id = :testId
+                            LABEL_NAME_FILTER
+                            group by r.test_id,lv.run_id,l.name
+                        )
+                        select
+                            run_id, test_id,
+                            jsonb_object_agg(name,(case when jsonb_array_length(data) > 1 then data else data->0 end)) as data
+                        from bag
+                        group by test_id,run_id;
+                        """.replace("LABEL_NAME_FILTER",labelNameFilter)
+                )
+                .setParameter("testId",testId);
+
+        if(!labelNameFilter.isEmpty()){
+            if(labelNameFilter.contains("include")){
+                query.setParameter("include",include);
+            }
+            if(labelNameFilter.contains("exclude")){
+                query.setParameter("exclude",exclude);
+            }
+        }
+
+        //noinspection unchecked
+        List<Object[]> found = query
+                .unwrap(NativeQuery.class)
+                .addScalar("run_id",Long.class)
+                .addScalar("test_id",Long.class)
+                .addScalar("data",JsonBinaryType.INSTANCE)
+                .list();
+        for(Object[] object : found){
+            // tuple (labelId,index) should uniquely identify which label_value entry "owns" the ValueMap for the given test and run
+            // note a label_value can have multiple values that are associated with a (labelId,index) if it is NxN
+            Long runId = (Long)object[0];
+            //object[1] is testId
+            ObjectNode data = (ObjectNode)object[2];
+
+            ValueMap vm = new ValueMap(data,-1,-1,runId,testId);
             rtrn.add(vm);
         }
         return rtrn;

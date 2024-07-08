@@ -5,11 +5,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import io.hyperfoil.tools.exp.horreum.entity.*;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.json.Json;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.validation.ConstraintViolation;
@@ -449,6 +451,25 @@ public class LabelServiceTest {
         assertEquals(3,aCount);
         assertEquals(2,bCount);
         assertEquals(5,labelValues.size());
+    }
+    @org.junit.jupiter.api.Test
+    public void labelValues_testId() throws JsonProcessingException {
+        Test t = createTest();
+        Run r1 = createRun(t,"uno");
+        labelService.calculateLabelValues(t.labels,r1.id);
+        List<LabelService.ValueMap> labelValues = labelService.labelValues(t.id,null,null,null,null,null,Integer.MAX_VALUE,0,Collections.emptyList(),Collections.emptyList(),false);
+        assertEquals(1,labelValues.size(),"only one run should exist for the test");
+        LabelService.ValueMap map = labelValues.get(0);
+        assertEquals(t.id,map.testId(),"test Id should match");
+        assertEquals(r1.id,map.runId(),"run Id should match");
+        ObjectNode data = map.data();
+        assertNotNull(data,"data should not be null");
+        assertTrue(data.has("nxn"),"data should have the nxn key");
+        assertTrue(data.has("iterA"),"data should have the iterA key");
+        assertTrue(data.has("iterB"),"data should have the iterB key");
+        assertTrue(data.has("iterAKey"),"data should have the iterAKey key");
+        assertTrue(data.has("foundA"),"data should have hte foundA key");
+        assertTrue(data.has("foundB"),"data should have hte foundB key");
     }
 
     @org.junit.jupiter.api.Test
