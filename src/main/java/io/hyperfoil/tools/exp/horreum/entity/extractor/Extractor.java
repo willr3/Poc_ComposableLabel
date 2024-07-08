@@ -1,6 +1,5 @@
 package io.hyperfoil.tools.exp.horreum.entity.extractor;
 
-import io.hyperfoil.tools.exp.horreum.FauxExtractor;
 import io.hyperfoil.tools.exp.horreum.entity.Label;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
