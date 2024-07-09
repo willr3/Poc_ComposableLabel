@@ -16,7 +16,7 @@
     <quarkus.platform.version>3.8.3</quarkus.platform.version>
     <skipITs>true</skipITs>
     <surefire-plugin.version>3.2.5</surefire-plugin.version>
-    <graalvm.version>23.0.1</graalvm.version>
+    <graalvm.version>23.1.2</graalvm.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -26,6 +26,16 @@
         <version>${quarkus.platform.version}</version>
         <type>pom</type>
         <scope>import</scope>
+        <exclusions>
+          <exclusion>
+            <groupId>org.graalvm.js</groupId>
+            <artifactId>js</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.graalvm.sdk</groupId>
+            <artifactId>graal-sdk</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -70,13 +80,15 @@
       <artifactId>rest-assured</artifactId>
       <scope>test</scope>
     </dependency>
+
     <dependency>
       <groupId>org.graalvm.sdk</groupId>
       <artifactId>graal-sdk</artifactId>
       <version>${graalvm.version}</version>
     </dependency>
+
     <!-- commented out for 23.1.1 -->
-    <dependency>
+<!--    <dependency>
       <groupId>org.graalvm.js</groupId>
       <artifactId>js</artifactId>
       <version>${graalvm.version}</version>
@@ -86,9 +98,9 @@
           <artifactId>graal-sdk</artifactId>
         </exclusion>
       </exclusions>
-    </dependency>
+    </dependency>-->
     <!-- commented out until 23.1.1 -->
-    <!--        <dependency>
+            <dependency>
                 <groupId>org.graalvm.polyglot</groupId>
                 <artifactId>polyglot</artifactId>
                 <version>${graalvm.version}</version>
@@ -98,8 +110,7 @@
                 <artifactId>js-community</artifactId>
                 <version>${graalvm.version}</version>
                 <type>pom</type>
-                <scope>import</scope>
-            </dependency>-->
+            </dependency>
     <dependency>
       <groupId>org.graalvm.regex</groupId>
       <artifactId>regex</artifactId>

@@ -67,6 +67,7 @@ public class LabelService {
                 } else {
                     //TODO reduce extractedValues before creating the labelValue
                     //labelValue.data = reduce(labelValue.data)
+                    labelValue.data = l.reducer.evalJavascript(labelValue.data);
                 }
 
                 labelValue.persistAndFlush();
@@ -83,6 +84,7 @@ public class LabelService {
             }else{
                 //TODO handle reducer
                 //labelValue.data = reduce(extractedValues.asNode())
+                labelValue.data = l.reducer.evalJavascript(extractedValues.asNode());
             }
             //if we have to iterate over some of the extracted values
             // we might not need to separate these two if we accept the added newNode overhead?
@@ -127,6 +129,7 @@ public class LabelService {
                         }else{
                             //TODO handle reducer results.add(reducedNode)
                             //results.add(reduce(newNode));
+                            results.add(l.reducer.evalJavascript(newNode));
                         }
                     }
                     break;
@@ -182,6 +185,7 @@ public class LabelService {
                         }else{
                             //TODO handle reducer results.add(reducedNode)
                             //results.add(reduce(newNode));
+                            results.add(l.reducer.evalJavascript(newNode));
                         }
                     }
                     break;

@@ -212,6 +212,30 @@ public class LabelServiceTest {
         assertEquals(3,arrayNode.size(),"unexpected number of entries in "+arrayNode);
     }
 
+    @Transactional
+    public Test createTest_reducing(){
+        Test t = new Test("reducer-test");
+        Label a1 = new Label("a1",t)
+                .loadExtractors(Extractor.fromString("$.a1").setName("a1"));
+        a1.reducer= new LabelReducer("v=>v*2");
+        Label iterA = new Label("iterA",t)
+                .setTargetSchema("uri:keyed")
+                .loadExtractors(Extractor.fromString("a1[]").setName("iterA"));
+        Label b1 = new Label("b1",t)
+                .loadExtractors(Extractor.fromString("$.b1").setName("b1"));
+        Label iterB = new Label("iterB",t)
+                .setTargetSchema("uri:keyed")
+                .loadExtractors(Extractor.fromString("b1[]").setName("iterB"));
+        Label nxn = new Label("nxn",t)
+                .loadExtractors(
+                        Extractor.fromString("iterA:$.key").setName("foundA"),
+                        Extractor.fromString("iterB:$.key").setName("foundB")
+                );
+        nxn.multiType= Label.MultiIterationType.NxN;
+        t.loadLabels(a1,b1,iterA,iterB,nxn); // order should not matter
+        t.persist();
+        return t;
+    }
 
     @Transactional
     public Test createTest(){
@@ -253,6 +277,15 @@ public class LabelServiceTest {
         t.persist();
         return t;
     }
+    @Transactional
+    public Run createRun_reducing(Test t) throws JsonProcessingException {
+        Run r = new Run(t.id,
+                new ObjectMapper().readTree("{ \"a1\":[0, 2, 4],\"b1\":[1, 3, 5]}"),new ObjectMapper().readTree("{}"));
+        r.persist();
+        return r;
+    }
+
+
     @Transactional
     public Run createRun(Test t) throws JsonProcessingException {
         return createRun(t,"");
@@ -296,6 +329,16 @@ public class LabelServiceTest {
         assertInstanceOf(ArrayNode.class,lv.data);
         ArrayNode arrayNode = (ArrayNode)lv.data;
         assertEquals(3,arrayNode.size(),arrayNode.toString());
+    }
+    @org.junit.jupiter.api.Test
+    public void calculateLabelValues_reducing() throws JsonProcessingException {
+        Test t = createTest_reducing();
+        Run r = createRun_reducing(t);
+        labelService.calculateLabelValues(t.labels,r.id);
+        List<LabelValue> found = LabelValue.find("from LabelValue lv where and lv.run.id=?2",r.id).list();
+        found.forEach(lv->{
+            System.out.println(lv.data.toString());
+        });
     }
 
 
