@@ -29,7 +29,11 @@ public class LabelReducerTest {
         input = new ObjectMapper().getNodeFactory().numberNode(10);
         JsonNode expected = new ObjectMapper().getNodeFactory().numberNode(20l);
         JsonNode output = reducer.evalJavascript(input);
-        assertEquals(expected,reducer.evalJavascript(input),"result should be double the input");
+        assertEquals(expected,output,"result should be double the input");
+        input = new ObjectMapper().getNodeFactory().textNode("foo");
+        expected = new ObjectMapper().getNodeFactory().textNode("foofoo");
+        output = reducer.evalJavascript(input);
+        assertEquals(expected,output,"result should be double the input");
     }
 
 

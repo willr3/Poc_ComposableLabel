@@ -48,10 +48,10 @@ public class LabelReducer  extends PanacheEntity {
             return input;
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (org.graalvm.polyglot.Context context = createContext(out)) {
+        try (org.graalvm.polyglot.Context context = Util.createContext(out)) {
             context.enter();
             try{
-                setupContext(context);
+                Util.setupContext(context);
                 StringBuilder jsCode = new StringBuilder("const __obj").append(" = ").append(input).append(";\n");
                 jsCode.append("const __func").append(" = ").append(function).append(";\n");
                 jsCode.append("__func").append("(__obj").append(")");
@@ -107,27 +107,5 @@ public class LabelReducer  extends PanacheEntity {
             }
         }
         return value;
-    }
-    private static void setupContext(Context context) throws IOException {
-        context.getBindings("js").putMember("isInstanceLike", new ProxyJacksonObject.InstanceCheck());
-        context.eval("js",
-                "Object.defineProperty(Object,Symbol.hasInstance, {\n" +
-                        "  value: function myinstanceof(obj) {\n" +
-                        "    return isInstanceLike(obj);\n" +
-                        "  }\n" +
-                        "});");
-    }
-    private static Context createContext(OutputStream out){
-        return Context.newBuilder("js")
-                .engine(Engine.newBuilder()
-                        .option("engine.WarnInterpreterOnly", "false")
-                        .build()
-                )
-                .allowExperimentalOptions(true)
-                .option("js.foreign-object-prototype", "true")
-                .option("js.global-property","true")
-                .out(out)
-                .err(out)
-                .build();
     }
 }

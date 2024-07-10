@@ -5,17 +5,28 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.graalvm.polyglot.Context;
+import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.proxy.Proxy;
 
 import java.io.IOException;
+import java.io.OutputStream;
 
 public class Util {
 
 
-    private static void setupContext(Context context) throws IOException {
-//      context.getBindings("js").putMember("_http",new ShimFetch(null,null));
+    public static Context createContext(OutputStream out){
+        return Context.newBuilder("js")
+                .engine(Engine.newBuilder("js").option("engine.WarnInterpreterOnly","false").build())
+                .allowExperimentalOptions(true)
+                .option("js.foreign-object-prototype", "true")
+                .option("js.global-property","true")
+                .out(out)
+                .err(out)
+                .build();
+    }
+    public static void setupContext(Context context) throws IOException {
         Source fetchSource = Source.newBuilder("js",
                 "fetch = async (url,options)=>new Promise(new (Java.type('io.hyperfoil.tools.exp.horreum.pasted.ShimFetch'))(url,options));","fakeFetch").build();
         context.eval(fetchSource);

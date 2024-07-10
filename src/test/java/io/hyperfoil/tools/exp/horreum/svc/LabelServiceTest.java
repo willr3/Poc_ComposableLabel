@@ -217,7 +217,7 @@ public class LabelServiceTest {
         Test t = new Test("reducer-test");
         Label a1 = new Label("a1",t)
                 .loadExtractors(Extractor.fromString("$.a1").setName("a1"));
-        a1.reducer= new LabelReducer("v=>v*2");
+        a1.reducer= new LabelReducer("ary=>ary.map(v=>v*2)");
         Label iterA = new Label("iterA",t)
                 .setTargetSchema("uri:keyed")
                 .loadExtractors(Extractor.fromString("a1[]").setName("iterA"));
@@ -228,9 +228,10 @@ public class LabelServiceTest {
                 .loadExtractors(Extractor.fromString("b1[]").setName("iterB"));
         Label nxn = new Label("nxn",t)
                 .loadExtractors(
-                        Extractor.fromString("iterA:$.key").setName("foundA"),
-                        Extractor.fromString("iterB:$.key").setName("foundB")
+                        Extractor.fromString("iterA").setName("foundA"),
+                        Extractor.fromString("iterB").setName("foundB")
                 );
+        nxn.reducer = new LabelReducer("({foundA,foundB})=>foundA*foundB");
         nxn.multiType= Label.MultiIterationType.NxN;
         t.loadLabels(a1,b1,iterA,iterB,nxn); // order should not matter
         t.persist();
@@ -335,10 +336,15 @@ public class LabelServiceTest {
         Test t = createTest_reducing();
         Run r = createRun_reducing(t);
         labelService.calculateLabelValues(t.labels,r.id);
-        List<LabelValue> found = LabelValue.find("from LabelValue lv where and lv.run.id=?2",r.id).list();
-        found.forEach(lv->{
-            System.out.println(lv.data.toString());
-        });
+        List<LabelValue> found = LabelValue.find("from LabelValue lv where lv.run.id=?1",r.id).list();
+        assertEquals(5,found.size());
+        LabelValue lv = LabelValue.find("from LabelValue lv where lv.label.name=?1 and lv.run.id=?2","a1",r.id).singleResult();
+        assertNotNull(lv);
+        //it applied the 2x function
+        assertEquals(new ObjectMapper().readTree("[0,4,8]"),lv.data);
+        lv = LabelValue.find("from LabelValue lv where lv.label.name=?1 and lv.run.id=?2","nxn",r.id).singleResult();
+        assertNotNull(lv);
+        assertEquals(new ObjectMapper().readTree("[0,4,8,0,12,24,0,20,40]"),lv.data);
     }
 
 

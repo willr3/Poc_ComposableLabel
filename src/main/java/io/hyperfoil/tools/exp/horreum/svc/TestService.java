@@ -1,6 +1,8 @@
 package io.hyperfoil.tools.exp.horreum.svc;
 
+import io.hyperfoil.tools.exp.horreum.entity.Test;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import org.jboss.resteasy.reactive.Separator;
 
@@ -15,10 +17,22 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
     @Inject
     LabelService service;
 
+    @POST
+    @Transactional
+    public void create(Test t){
+        t.persist();
+    }
+
+    @GET
+    @Path("{id}")
+    public Test getById(@PathParam("id") int testId){
+        return Test.findById(testId);
+    }
+
 
     @GET
     @Path("{id}/labelValues")
-    List<LabelService.ValueMap> labelValues(
+    public List<LabelService.ValueMap> labelValues(
             @PathParam("id") int testId,
             @QueryParam("filter") @DefaultValue("{}") String filter,
             @QueryParam("before") @DefaultValue("") String before,
