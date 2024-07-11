@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.exp.horreum.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
 import io.hyperfoil.tools.exp.horreum.valid.ValidTarget;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
@@ -31,6 +32,7 @@ public class Label extends PanacheEntity implements Comparable<Label> {
     @NotNull(message = "label must reference a test")
     @ManyToOne(cascade = {CascadeType.PERSIST,CascadeType.MERGE})
     @JoinColumn(name = "parent_id")
+    @JsonIgnore
     public Test parent;
 
     public String target_schema; //using a string to simplify the PoC
@@ -53,6 +55,7 @@ public class Label extends PanacheEntity implements Comparable<Label> {
     public Label(String name,Test parent){
         this.name = name;
         this.parent = parent;
+        this.extractors = new ArrayList<>();
     }
 
     public Label loadExtractors(Extractor...extractors){
@@ -62,6 +65,16 @@ public class Label extends PanacheEntity implements Comparable<Label> {
     }
     public Label setTargetSchema(String targetSchema){
         this.target_schema = targetSchema;
+        return this;
+    }
+
+    public Label setReducer(String javascript){
+        LabelReducer reducer = new LabelReducer(javascript);
+        this.reducer = reducer;
+        return this;
+    }
+    public Label setReducer(LabelReducer reducer){
+        this.reducer = reducer;
         return this;
     }
 

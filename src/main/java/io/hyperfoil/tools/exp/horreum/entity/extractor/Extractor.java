@@ -1,5 +1,6 @@
 package io.hyperfoil.tools.exp.horreum.entity.extractor;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.hyperfoil.tools.exp.horreum.entity.Label;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
@@ -25,6 +26,7 @@ public class Extractor extends PanacheEntity {
     @NotNull(message = "extractor must reference a label")
     @ManyToOne(cascade = CascadeType.PERSIST)
     @JoinColumn(name = "parent_id")
+    @JsonIgnore
     public Label parent;
 
     public enum Type {PATH, VALUE, METADATA}
