@@ -6,6 +6,7 @@ import io.hyperfoil.tools.exp.horreum.pasted.ProxyJacksonObject;
 import io.hyperfoil.tools.exp.horreum.pasted.Util;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -29,6 +30,8 @@ import java.util.List;
 @Table(name = "label_reducers")
 public class LabelReducer  extends PanacheEntity {
 
+
+    @Column(columnDefinition = "TEXT")
     public String function;
 
     public LabelReducer(){

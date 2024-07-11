@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.exp.horreum.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
 import io.hyperfoil.tools.exp.horreum.valid.ValidTarget;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
@@ -18,6 +19,7 @@ import java.util.stream.Collectors;
                 @UniqueConstraint(columnNames = {"name","parent_id"})
         }
 )
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class Label extends PanacheEntity implements Comparable<Label> {
 
     public static enum MultiIterationType { Length, NxN}
@@ -137,6 +139,7 @@ public class Label extends PanacheEntity implements Comparable<Label> {
      * returns true if this is part of a circular reference
      * @return
      */
+    @JsonIgnore
     public boolean isCircular(){
         if(!usesLabelValueExtractor()){
             return false;

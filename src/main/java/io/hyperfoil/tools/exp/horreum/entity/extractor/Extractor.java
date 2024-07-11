@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.exp.horreum.entity.extractor;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.hyperfoil.tools.exp.horreum.entity.Label;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
@@ -15,6 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * This allows a label to "mutate" with changes to data location
  */
 @Entity
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class Extractor extends PanacheEntity {
     public static final String PREFIX="$";
     public static final String FOR_EACH_SUFFIX = "[]";
@@ -36,6 +38,7 @@ public class Extractor extends PanacheEntity {
 
     @NotNull
     @Enumerated(EnumType.STRING)
+    @JsonIgnore
     public Type type;
 
     public String jsonpath;
@@ -46,8 +49,9 @@ public class Extractor extends PanacheEntity {
     public Label targetLabel;
 
     public String column_name; //eventually support more than just metadata
-
+    @JsonIgnore
     public boolean forEach=false;
+
     public Extractor setName(String name){
         this.name = name;
         return this;
