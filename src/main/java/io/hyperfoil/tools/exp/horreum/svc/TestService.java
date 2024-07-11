@@ -35,12 +35,13 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
 
     @GET
     @Path("rhivos")
+    @Transactional
     public Test createRhivos(){
         Test t = new Test("rhivos-perf-comprehensive");
         String transformName = "transform";
         String transformPrefix = transformName+Extractor.NAME_SEPARATOR;
         t.loadLabels(
-                new Label(transformName)
+                new Label(transformName,t)
                         .loadExtractors(
                                 Extractor.fromString("$.user").setName("user"),
                                 Extractor.fromString("$.uuid").setName("uuid"),
@@ -102,7 +103,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                                 }
                                 """
                         )),
-                new Label("Autobench Multi Core")
+                new Label("Autobench Multi Core",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.results.*.MultiCore").setName("results"),
                                 Extractor.fromString(transformPrefix+"$.workload").setName("workload")
@@ -121,7 +122,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                                 };
                                 """
                         )),
-                new Label("Autobench Scaling")
+                new Label("Autobench Scaling",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.results.*.Scaling").setName("results"),
                                 Extractor.fromString(transformPrefix+"$.workload").setName("workload")
@@ -139,7 +140,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                                 };
                                 """
                         )),
-                new Label("Autobench Single Core")
+                new Label("Autobench Single Core",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.results.*.SingleCore").setName("results"),
                                 Extractor.fromString(transformPrefix+"$.workload").setName("workload")
@@ -157,83 +158,84 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                                 };
                                 """
                         )),
-                new Label("Contexts")
+                new Label("Contexts",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.contexts").setName("contexts")
                         ),
-                new Label("CoreMark-PRO Multi Core")
+                new Label("CoreMark-PRO Multi Core",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.results.\"CoreMark-PRO\".MultiCore").setName("coremark-pro-multi-core")
                         ),
-                new Label("CoreMark-PRO Scaling")
+                new Label("CoreMark-PRO Scaling",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.results.\"CoreMark-PRO\".Scaling").setName("coremark-pro-scaling")
                         ),
-                new Label("CoreMark-PRO Single Core")
+                new Label("CoreMark-PRO Single Core",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.results.\"CoreMark-PRO\".SingleCore").setName("coremark-pro-single-core")
                         ),
-                new Label("Description")
+                new Label("Description",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.metadata.description").setName("Description")
                         ),
-                new Label("Hostname")
+                new Label("Hostname",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.metadata.ansible_facts.env.HOSTNAME").setName("Hostname")
                         ),
-                new Label("Kernel")
+                new Label("Kernel",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.metadata.ansible_facts.kernel").setName("kernel")
                         ),
-                new Label("Metadata")
+                new Label("Metadata",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.metadata").setName("metadata")
                         ),
-                new Label("PCP Time Series")
+                new Label("PCP Time Series",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.pcp_ts").setName("pcp_time_series")
                         ),
-                new Label("Results")
+                new Label("Results",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.results").setName("results")
                         ),
-                new Label("RHIVOS Config")
+                new Label("RHIVOS Config",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.metadata.rhivos_config").setName("RHIVOS Config")
                         ),
-                new Label("Run ID")
+                new Label("Run ID",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.metadata.run_id").setName("run_id")
                         ),
-                new Label("Sample UUID")
+                new Label("Sample UUID",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.sample_uuid").setName("sample_uuid")
                         ),
-                new Label("Start Time")
+                new Label("Start Time",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.metadata.start_time").setName("start_time")
                         ),
-                new Label("Stressor")
+                new Label("Stressor",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.stressor").setName("stressor")
                         ),
-                new Label("User")
+                new Label("User",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.metadata.user").setName("user")
                         ),
-                new Label("UUID")
+                new Label("UUID",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.metadata.uuid").setName("uuid")
                         ),
-                new Label("Workers")
+                new Label("Workers",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.workers").setName("workers")
                         ),
-                new Label("Workload")
+                new Label("Workload",t)
                         .loadExtractors(
                                 Extractor.fromString(transformPrefix+"$.workload").setName("workload")
                         )
         );
+        t.persist();
         return t;
     }
 
