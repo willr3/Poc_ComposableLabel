@@ -32,6 +32,10 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
         return Test.findById(testId);
     }
 
+    public Test getByName(String name){
+        return Test.find("from Test t where t.name =?1",name).firstResult();
+    }
+
 
     @GET
     @Path("rhivos")
@@ -39,12 +43,13 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
     public Test createRhivos(){
         Test t = new Test("rhivos-perf-comprehensive");
         String transformName = "transform";
-        String transformPrefix = transformName+Extractor.NAME_SEPARATOR;
+        String transformPrefix = transformName+Extractor.FOR_EACH_SUFFIX+Extractor.NAME_SEPARATOR;
         t.loadLabels(
                 new Label(transformName,t)
                         .loadExtractors(
                                 Extractor.fromString("$.user").setName("user"),
                                 Extractor.fromString("$.uuid").setName("uuid"),
+                                Extractor.fromString("$.run_id").setName("run_id"),
                                 Extractor.fromString("$.start_time").setName("start_time"),
                                 Extractor.fromString("$.end_time").setName("end_time"),
                                 Extractor.fromString("$.description").setName("description"),
@@ -70,7 +75,6 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                                     stressng_pcp_ts, coremark_pro_pcp_ts, autobench_pcp_ts,
                                     user, uuid, run_id, start_time, end_time, description, ansible_facts, workers, stressor
                                 }) => {
-                                
                                     var sngmap = stressng_sample_uuid.map((value, i) => ({
                                         sample_uuid: value,
                                         workload: "stressng",
