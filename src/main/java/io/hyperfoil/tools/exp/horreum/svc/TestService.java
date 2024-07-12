@@ -66,7 +66,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                                 Extractor.fromString("$.coremark_pro_workload[*].results").setName("coremark_pro_results"),
                                 Extractor.fromString("$.autobench_workload[*].results").setName("autobench_results")
                         )
-                        .setTargetSchema(" urn:rhivos-perf-comprehensive-datasets:01")
+                        .setTargetSchema("urn:rhivos-perf-comprehensive-datasets:01")
                         .setReducer(new LabelReducer(
                         """
                                 ({
@@ -247,6 +247,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
     @Path("{id}/labelValues")
     public List<LabelService.ValueMap> labelValues(
             @PathParam("id") int testId,
+            @QueryParam("group") String group,
             @QueryParam("filter") @DefaultValue("{}") String filter,
             @QueryParam("before") @DefaultValue("") String before,
             @QueryParam("after") @DefaultValue("") String after,
@@ -259,6 +260,11 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
             @QueryParam("include") @Separator(",") List<String> include,
             @QueryParam("exclude") @Separator(",") List<String> exclude,
             @QueryParam("multiFilter") @DefaultValue("false") boolean multiFilter){
-        return service.labelValues(testId,filter,before,after,sort,direction,limit,page,include,exclude,multiFilter);
+        if(group!=null && !group.isBlank()){
+            //TODO call labelValues with schema
+            return service.labelValues(group,testId,include,exclude);
+        }else {
+            return service.labelValues(testId, filter, before, after, sort, direction, limit, page, include, exclude, multiFilter);
+        }
     }
 }
