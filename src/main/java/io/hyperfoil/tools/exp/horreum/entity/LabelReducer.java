@@ -72,14 +72,17 @@ public class LabelReducer  extends PanacheEntity {
                         return new ObjectMapper().getNodeFactory().textNode((String)converted);
                     }
                 } catch (PolyglotException e){
+                    e.printStackTrace();
                     //it's a PoC, let's make sure we don't copy this part of the code to Horreum
                 }
             } catch (IOException e) {
+                e.printStackTrace();
                 //it's a PoC, let's make sure we don't copy this part of the code to Horreum
             } finally {
                 context.leave();
             }
         }
+        System.out.println("the output of the js\n"+out);
         //if the js fails we return the input
         return input;
     }
