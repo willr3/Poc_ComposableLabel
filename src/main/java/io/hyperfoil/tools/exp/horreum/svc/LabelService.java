@@ -69,7 +69,6 @@ public class LabelService {
                     //labelValue.data = reduce(labelValue.data)
                     labelValue.data = l.reducer.evalJavascript(labelValue.data);
                 }
-
                 labelValue.persistAndFlush();
                 em.flush();
             } else {
@@ -80,12 +79,12 @@ public class LabelService {
         }else if ( !labelValue.iterated ){
             if(l.reducer == null){
                 labelValue.data = extractedValues.asNode();
-                labelValue.persistAndFlush();//trying to force it to persist because of issue with LabelValueExtractor fromString creating
             }else{
                 //TODO handle reducer
                 //labelValue.data = reduce(extractedValues.asNode())
                 labelValue.data = l.reducer.evalJavascript(extractedValues.asNode());
             }
+            labelValue.persistAndFlush();//trying to force it to persist because of issue with LabelValueExtractor fromString creating
             //if we have to iterate over some of the extracted values
             // we might not need to separate these two if we accept the added newNode overhead?
         }else{// labelValue.iterated
@@ -192,6 +191,9 @@ public class LabelService {
             }
             labelValue.persistAndFlush();
         }
+        labelValue.persistAndFlush();//added to see if it fixes the rhivos test
+        //this did fix it so there must be a codepath where persistAndFlush wasn't already called
+        //can we simplify to just calling persist and flush here?
     }
 
     //ExtractedValues assumes one jsonnode for each extractor name.
@@ -391,11 +393,9 @@ public class LabelService {
                         with bag as (
                             select
                                 r.test_id, lv.run_id, l.name,
-                                jsonb_agg(lv.data -> lvp.childindex::::int) as data
+                                jsonb_agg(lv.data) as data
                             from label_values lv
-                                right join label_value_pointer lvp on lvp.child_label_id = lv.label_id and lvp.child_run_id = lv.run_id
                                 left join label l on l.id = lv.label_id
-                                left join label lt on lt.id = lvp.target_label_id
                                 left join run r on r.id = lv.run_id
                             where r.test_id = :testId
                             LABEL_NAME_FILTER
@@ -409,7 +409,6 @@ public class LabelService {
                         """.replace("LABEL_NAME_FILTER",labelNameFilter)
                 )
                 .setParameter("testId",testId);
-
         if(!labelNameFilter.isEmpty()){
             if(labelNameFilter.contains("include")){
                 query.setParameter("include",include);
@@ -572,7 +571,7 @@ public class LabelService {
                 when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' then jsonb_path_query_array(m.lv_data,m.jsonpath::::jsonpath)
                 when m.type = 'VALUE' and (m.jsonpath is null or m.jsonpath = '') then to_jsonb(ARRAY[m.lv_data])
                 else '[]'::::jsonb end) as found from m)
-            select n.name as name,(case when jsonb_array_length(n.found) > 1 then n.found else n.found->0 end) as data, n.lv_iterated as lv_iterated from n
+            select n.name as name,(case when jsonb_array_length(n.found) > 1 or strpos(n.jsonpath,'[*]') > 0 then n.found else n.found->0 end) as data, n.lv_iterated as lv_iterated from n
         """).setParameter("run_id",runId).setParameter("label_id",l.id)
                 //TODO add logging in else '[]'
                 .unwrap(NativeQuery.class)
