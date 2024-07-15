@@ -312,8 +312,9 @@ public class LabelService {
         if(labelNameFilter.isEmpty() && exclude!=null && !exclude.isEmpty()){
             labelNameFilter=" AND l.name NOT in :exclude";
         }
-        //noinspection unchecked
-        List<Object[]> found = em.createNativeQuery(
+
+        //noinspection rawtypes
+        NativeQuery query = (NativeQuery) em.createNativeQuery(
         """
         with bag as (
             select
@@ -335,14 +336,27 @@ public class LabelService {
         group by test_id,run_id,target_label_id,targetindex;
         """.replace("LABEL_NAME_FILTER",labelNameFilter)
         ).setParameter("schema",schema)
-        .setParameter("testId",testId)
-        .unwrap(NativeQuery.class)
-        .addScalar("targetindex",Long.class)
-        .addScalar("target_label_id",Long.class)
-        .addScalar("run_id",Long.class)
-        .addScalar("test_id",Long.class)
-        .addScalar("data",JsonBinaryType.INSTANCE)
-        .list();
+        .setParameter("testId",testId);
+
+        if(!labelNameFilter.isEmpty()){
+            if(labelNameFilter.contains("include")){
+                query.setParameter("include",include);
+            }
+            if(labelNameFilter.contains("exclude")){
+                query.setParameter("exclude",exclude);
+            }
+        }
+
+        //noinspection unchecked
+        List<Object[]> found = query
+            .unwrap(NativeQuery.class)
+            .addScalar("targetindex",Long.class)
+            .addScalar("target_label_id",Long.class)
+            .addScalar("run_id",Long.class)
+            .addScalar("test_id",Long.class)
+            .addScalar("data",JsonBinaryType.INSTANCE)
+            .list();
+
         for(Object[] object : found){
             // tuple (labelId,index) should uniquely identify which label_value entry "owns" the ValueMap for the given test and run
             // note a label_value can have multiple values that are associated with a (labelId,index) if it is NxN
