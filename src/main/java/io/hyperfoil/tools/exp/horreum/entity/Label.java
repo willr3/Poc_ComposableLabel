@@ -17,6 +17,9 @@ import java.util.stream.Collectors;
         name = "label",
         uniqueConstraints = {
                 @UniqueConstraint(columnNames = {"name","parent_id"})
+        },
+        indexes = {
+                @Index(name = "label_targetschema", columnList = "target_schema", unique = false)
         }
 )
 @JsonInclude(JsonInclude.Include.NON_NULL)

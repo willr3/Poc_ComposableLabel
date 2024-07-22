@@ -43,7 +43,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
     public Test createRhivos(){
         Test t = new Test("rhivos-perf-comprehensive");
         String transformName = "transform";
-        String transformPrefix = transformName+Extractor.FOR_EACH_SUFFIX+Extractor.NAME_SEPARATOR;
+        String transformPrefix = transformName+Extractor.FOR_EACH_SUFFIX+Extractor.NAME_SEPARATOR;//transform[]:
         t.loadLabels(
                 new Label(transformName,t)
                         .loadExtractors(
