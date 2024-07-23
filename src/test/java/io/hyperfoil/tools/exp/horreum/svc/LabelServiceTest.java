@@ -352,13 +352,28 @@ public class LabelServiceTest {
     @org.junit.jupiter.api.Test
     public void calculateLabelValues_degradation_test() throws JsonProcessingException {
         Test t = createTest();
-        int LIMIT = 50;
+        Test t2 = createTest();
+        Run r2 = createRun(t2,"1");
+        System.out.println("created Test "+t.id+" "+t2.id);
+        System.out.println("created run r2 "+r2.id);
+        labelService.calculateLabelValues(t2.labels,r2.id);
+        List<LabelService.ValueMap> t2valueMaps = labelService.labelValues("uri:keyed",t2.id,Collections.emptyList(),Collections.emptyList());
+        t2valueMaps.forEach(System.out::println);
+        int LIMIT = 5000;
         long length = Math.round(Math.ceil(Math.log10(LIMIT)));
+        System.out.println("length="+length);
         for(int i=0; i< LIMIT; i++){
             Run r = createRun(t,String.format("%"+length+"d",i));
             long start = System.currentTimeMillis();
             labelService.calculateLabelValues(t.labels,r.id);
             long stop = System.currentTimeMillis();
+            double calculateDuration = ((double)stop-start)/1000;
+            start = System.currentTimeMillis();
+            List<LabelService.ValueMap> valueMaps = labelService.labelValues("uri:keyed",t2.id,Collections.emptyList(),Collections.emptyList());
+            stop = System.currentTimeMillis();
+            double labelValueDuration = ((double)stop-start)/1000;
+            System.out.printf("%"+length+"d %3.3f %3.3f%n",i,calculateDuration,labelValueDuration);
+            assertTrue(valueMaps.size()>1,"size = "+valueMaps.size());
             assertTrue((stop-start)/1000 < 1);
         }
     }
