@@ -2,6 +2,7 @@ package io.hyperfoil.tools.exp.horreum.entity;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.exp.horreum.pasted.JsonBinaryType;
+import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.*;
 import org.hibernate.annotations.Type;
@@ -22,7 +23,7 @@ import java.util.Set;
         @Index(name="lv_label_id",columnList = "label_id",unique = false)
     }
 )
-public class LabelValue extends PanacheEntityBase {
+public class LabelValue extends PanacheEntity {
 
     public boolean iterated; //if the value contains an array that represents the result of
 
@@ -30,19 +31,16 @@ public class LabelValue extends PanacheEntityBase {
     @OneToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.EAGER, orphanRemoval = true, mappedBy = "child")
     public Set<LabelValuePointer> pointers = new HashSet<>();
 
-    @Id
     @ManyToOne
     @JoinColumn(name="run_id")
     public Run run;
 
-    @Id
     @ManyToOne
     @JoinColumn(name="label_id")
     public Label label;
 
     @Type(JsonBinaryType.class)
     public JsonNode data;
-
 
     public void addPointer(LabelValuePointer pointer){
         pointer.child=this;
@@ -59,7 +57,7 @@ public class LabelValue extends PanacheEntityBase {
 
     @Override
     public int hashCode(){
-        return Objects.hash(run.id,label.id);
+        return Objects.hash(id);
     }
     @Override
     public boolean equals(Object object){

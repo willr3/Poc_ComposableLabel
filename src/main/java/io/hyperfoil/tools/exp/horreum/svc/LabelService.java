@@ -319,7 +319,7 @@ public class LabelService {
         with bag as (
             select
                 r.test_id, lv.run_id, lt.id as target_label_id, lvp.targetindex, l.name,
-                jsonb_agg(lv.data -> lvp.childindex::::int) as data
+                jsonb_agg(lv.data -> lvp.childindex::int) as data
             from label_values lv
                 right join label_value_pointer lvp on lvp.child_id = lv.id
                 left join label l on l.id = lv.label_id
