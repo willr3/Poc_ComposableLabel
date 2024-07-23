@@ -321,10 +321,9 @@ public class LabelService {
                 r.test_id, lv.run_id, lt.id as target_label_id, lvp.targetindex, l.name,
                 jsonb_agg(lv.data -> lvp.childindex::::int) as data
             from label_values lv
-                right join label_value_pointer lvp on lvp.child_id = lv.id
+                right join label_value_pointer lvp on lvp.child_label_id = lv.label_id and lvp.child_run_id = lv.run_id
                 left join label l on l.id = lv.label_id
-                left join label_values lvt on lvp.target_id = lvt.id
-                left join label lt on lt.id = lvt.label_id
+                left join label lt on lt.id = lvp.target_label_id
                 left join run r on r.id = lv.run_id
             where lt.target_schema = :schema and r.test_id = :testId
             LABEL_NAME_FILTER
@@ -479,16 +478,15 @@ public class LabelService {
         """
            with bag as (
                 select lvp.targetindex,
-                    lt.id as target_label_id,
-                    l.name,jsonb_agg(lv.data -> lvp.childindex::int) as data
+                    lvp.target_label_id,
+                    l.name,jsonb_agg(lv.data -> lvp.childindex::::int) as data
                 from label_values lv
-                    right join label_value_pointer lvp on lvp.child_id = lv.id
-                    left join label_values lvt on lvp.target_id = lvt.id
+                    right join label_value_pointer lvp on lvp.child_label_id = lv.label_id and lvp.child_run_id = lv.run_id
                     left join label l on l.id = lv.label_id
-                    left join label lt on lt.id = lvt.label_id
-                where lt.id = :label_id and lv.run_id = :run_id
+                where lvp.target_label_id = :label_id
+                    and lvp.target_run_id = :run_id
                     LABEL_NAME_FILTER
-                group by target_label_id,targetindex,l.name)
+                group by target_label_id,targetindex,name)
            select
                 targetindex as index,
                 target_label_id as label_id,
@@ -571,29 +569,22 @@ public class LabelService {
 
         //debugging again
         //a for-each that isn't iterated...?
-        //when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' and m.foreach and jsonb_typeof(m.lv_data) = 'array' then extract_path_array(m.lv_data,m.jsonpath::jsonpath)
+        //when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' and m.foreach and jsonb_typeof(m.lv_data) = 'array' then extract_path_array(m.lv_data,m.jsonpath::::jsonpath)
 
         //do we need to check jsonb_typeof
         //right now this assumes we don't get garbage data... probably not a safe assumption
         //unchecked is how you know the code is great :)
         @SuppressWarnings("unchecked")
         List<Object[]> found = Label.getEntityManager().createNativeQuery("""
-            with m as (
-                select
-                    e.name, e.type, e.jsonpath, e.foreach, e.column_name, 
-                    lv.data as lv_data, lv.iterated as lv_iterated, 
-                    r.data as run_data, r.metadata as run_metadata 
-                from 
-                    extractor e left join label_values lv on e.target_id = lv.label_id, 
-                    run r where e.parent_id = :label_id and (lv.run_id = :run_id or lv.run_id is null) and r.id = :run_id),
+            with m as (select e.name, e.type, e.jsonpath, e.foreach, e.column_name, lv.data as lv_data, lv.iterated as lv_iterated, r.data as run_data, r.metadata as run_metadata from extractor e left join label_values lv on e.target_id = lv.label_id, run r  where e.parent_id = :label_id and (lv.run_id = :run_id or lv.run_id is null) and r.id = :run_id),
             n as (select m.name, m.type, m.jsonpath, m.foreach, m.lv_iterated ,m.lv_data, (case
-                when m.type = 'PATH' and m.jsonpath is not null then jsonb_path_query_array(m.run_data,m.jsonpath::jsonpath)
-                when m.type = 'METADATA' and m.jsonpath is not null and m.column_name = 'metadata' then jsonb_path_query_array(m.run_metadata,m.jsonpath::jsonpath)
-                when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' and m.lv_iterated then extract_path_array(m.lv_data,m.jsonpath::jsonpath)
+                when m.type = 'PATH' and m.jsonpath is not null then jsonb_path_query_array(m.run_data,m.jsonpath::::jsonpath)
+                when m.type = 'METADATA' and m.jsonpath is not null and m.column_name = 'metadata' then jsonb_path_query_array(m.run_metadata,m.jsonpath::::jsonpath)
+                when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' and m.lv_iterated then extract_path_array(m.lv_data,m.jsonpath::::jsonpath)
                 
-                when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' then jsonb_path_query_array(m.lv_data,m.jsonpath::jsonpath)
+                when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' then jsonb_path_query_array(m.lv_data,m.jsonpath::::jsonpath)
                 when m.type = 'VALUE' and (m.jsonpath is null or m.jsonpath = '') then to_jsonb(ARRAY[m.lv_data])
-                else '[]'::jsonb end) as found from m)
+                else '[]'::::jsonb end) as found from m)
             select n.name as name,(case when jsonb_array_length(n.found) > 1 or strpos(n.jsonpath,'[*]') > 0 then n.found else n.found->0 end) as data, n.lv_iterated as lv_iterated from n
         """).setParameter("run_id",runId).setParameter("label_id",l.id)
                 //TODO add logging in else '[]'
