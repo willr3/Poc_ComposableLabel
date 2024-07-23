@@ -318,16 +318,15 @@ public class LabelService {
         """
         with bag as (
             select
-                r.test_id, lv.run_id, lt.id as target_label_id, lvp.targetindex, l.name,
+                lt.parent_id as test_id, lv.run_id, lt.id as target_label_id, lvp.targetindex, l.name,
                 jsonb_agg(lv.data -> lvp.childindex::::int) as data
             from label_values lv
                 right join label_value_pointer lvp on lvp.child_label_id = lv.label_id and lvp.child_run_id = lv.run_id
                 left join label l on l.id = lv.label_id
                 left join label lt on lt.id = lvp.target_label_id
-                left join run r on r.id = lv.run_id
-            where lt.target_schema = :schema and r.test_id = :testId
+            where lt.target_schema = :schema and lt.parent_id = :testId
             LABEL_NAME_FILTER
-            group by r.test_id,lv.run_id,lt.id,lvp.targetindex, l.name
+            group by lt.parent_id,lv.run_id,lt.id,lvp.targetindex, l.name
         )
         select
             targetindex,target_label_id, run_id, test_id,
