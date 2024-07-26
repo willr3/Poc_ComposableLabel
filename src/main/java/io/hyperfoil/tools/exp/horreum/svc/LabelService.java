@@ -13,7 +13,6 @@ import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import org.hibernate.query.NativeQuery;
-import org.jboss.resteasy.reactive.Separator;
 
 import java.util.*;
 
@@ -38,10 +37,13 @@ public class LabelService {
         ExtractedValues extractedValues = calculateExtractedValuesWithIterated(l,runId);
         //this is a separate case because the reducer receives the raw extracted value not a wrapper object
         boolean usesIterated = usesIterated(runId,l.id);
+        Run r = Run.findById(runId);
+
         LabelValue labelValue = new LabelValue();
         labelValue.label = l;
         labelValue.run = Run.findById(runId);
         labelValue.iterated = l.hasForEach() || usesIterated;
+
         if (l.extractors.size()==1) {
             if (extractedValues.size() == 1) {
                 Extractor e = l.extractors.iterator().next();
@@ -59,7 +61,7 @@ public class LabelService {
                 if (labelValue.iterated && target!=null) {
                     for(int i=0; i<data.size(); i++){
                         LabelValuePointer pointer = LabelValuePointer.create(i,labelValue,i,target);
-                        labelValue.addPointer(pointer);
+                        labelValue.addSource(pointer);
                     }
                 }
                 if (l.reducer == null) {
@@ -119,7 +121,7 @@ public class LabelService {
                                     //no bueno
                                 }
                                 LabelValuePointer pointer = LabelValuePointer.create(results.size(), labelValue,i,target);
-                                labelValue.addPointer(pointer);
+                                labelValue.addSource(pointer);
                             }
                         }
                         //newNode contains the parameters for this invocation
@@ -168,7 +170,7 @@ public class LabelService {
                                     //yikes
                                 }
                                 LabelValuePointer pointer = LabelValuePointer.create(i,labelValue,targetIndex,target);
-                                labelValue.addPointer(pointer);
+                                labelValue.addSource(pointer);
                                 if(extractedValues.hasNonNull(e.name) && extractedValues.get(e.name).size() > targetIndex){
                                     newNode.set(e.name,extractedValues.get(e.name).get(targetIndex));
                                 }
@@ -580,11 +582,11 @@ public class LabelService {
         List<Object[]> found = Label.getEntityManager().createNativeQuery("""
             with m as (
                 select
-                    e.name, e.type, e.jsonpath, e.foreach, e.column_name, 
-                    lv.data as lv_data, lv.iterated as lv_iterated, 
-                    r.data as run_data, r.metadata as run_metadata 
-                from 
-                    extractor e left join label_values lv on e.target_id = lv.label_id, 
+                    e.name, e.type, e.jsonpath, e.foreach, e.column_name,
+                    lv.data as lv_data, lv.iterated as lv_iterated,
+                    r.data as run_data, r.metadata as run_metadata
+                from
+                    extractor e left join label_values lv on e.target_id = lv.label_id,
                     run r where e.parent_id = :label_id and (lv.run_id = :run_id or lv.run_id is null) and r.id = :run_id),
             n as (select m.name, m.type, m.jsonpath, m.foreach, m.lv_iterated ,m.lv_data, (case
                 when m.type = 'PATH' and m.jsonpath is not null then jsonb_path_query_array(m.run_data,m.jsonpath::jsonpath)

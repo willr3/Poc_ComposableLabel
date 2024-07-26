@@ -3,7 +3,6 @@ package io.hyperfoil.tools.exp.horreum.entity;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.hyperfoil.tools.exp.horreum.pasted.JsonBinaryType;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
-import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.*;
 import org.hibernate.annotations.Type;
 
@@ -14,9 +13,6 @@ import java.util.Set;
 @Entity
 @Table(
     name = "label_values",
-    uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"run_id","label_id"})
-    },
     //indexes used by LabelService.calculateExtractedValuesWithIterated
     indexes = {
         @Index(name="lv_run_id",columnList = "run_id",unique = false),
@@ -29,7 +25,7 @@ public class LabelValue extends PanacheEntity {
 
     @ElementCollection(fetch = FetchType.EAGER)
     @OneToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.EAGER, orphanRemoval = true, mappedBy = "child")
-    public Set<LabelValuePointer> pointers = new HashSet<>();
+    public Set<LabelValue> sources = new HashSet<>();//what label_values were used to create this label_value
 
     @ManyToOne
     @JoinColumn(name="run_id")
@@ -42,12 +38,11 @@ public class LabelValue extends PanacheEntity {
     @Type(JsonBinaryType.class)
     public JsonNode data;
 
-    public void addPointer(LabelValuePointer pointer){
-        pointer.child=this;
-        pointers.add(pointer);
+    public void addSource(LabelValue source){
+        sources.add(source);
     }
-    public void removePointer(LabelValuePointer pointer){
-        pointers.remove(pointer);
+    public void removeSource(LabelValue source){
+        sources.remove(source);
     }
 
     @Override
