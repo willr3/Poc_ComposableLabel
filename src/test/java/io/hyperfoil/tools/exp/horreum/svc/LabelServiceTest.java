@@ -144,9 +144,12 @@ public class LabelServiceTest {
 
         Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","a1",t.id).firstResult();
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
-        assertTrue(extractedValues.hasNonNull(l.name));
-        assertFalse(extractedValues.isIterated(l.name));
-        assertInstanceOf(ArrayNode.class,extractedValues.get(l.name));
+
+        assertTrue(extractedValues.hasNonNull(l.name),extractedValues.toString());
+        assertFalse(extractedValues.get(l.name).get(0).isIterated());
+        assertInstanceOf(List.class,extractedValues.get(l.name));
+        List<LabelService.ExtractedValue> values = extractedValues.get(l.name);
+
     }
     //case when m.dtype = 'RunMetadataExtractor' and m.jsonpath is not null and m.column_name = 'metadata'
     @org.junit.jupiter.api.Test
@@ -155,10 +158,11 @@ public class LabelServiceTest {
         Run r = createRun(t);
         Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","build",t.id).firstResult();
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
+        System.out.println(extractedValues);
         assertTrue(extractedValues.hasNonNull(l.name));
-        assertFalse(extractedValues.isIterated(l.name));
+        assertFalse(extractedValues.get(l.name).get(0).isIterated());
         //It's a text node because it is quoted in the json
-        assertInstanceOf(TextNode.class,extractedValues.get(l.name));
+        assertInstanceOf(TextNode.class,extractedValues.get(l.name).get(0).data());
     }
     //case when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' and m.foreach and jsonb_typeof(m.lv_data) = 'array'
 
@@ -174,10 +178,9 @@ public class LabelServiceTest {
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
         assertEquals(1,extractedValues.size(),"missing extracted value\n"+extractedValues);
         assertTrue(extractedValues.hasNonNull(l.name),"missing extracted value\n"+extractedValues);
-        assertTrue(extractedValues.isIterated(l.name));
+        assertFalse(extractedValues.get(l.name).get(0).isIterated());
         assertInstanceOf(ArrayNode.class,extractedValues.get(l.name),"unexpected: "+extractedValues.get(l.name));
-        ArrayNode arrayNode = (ArrayNode) extractedValues.get(l.name);
-        assertEquals(3,arrayNode.size(),"unexpected number of entries in "+arrayNode);
+        assertEquals(3,extractedValues.get(l.name).size(),"unexpected number of entries in "+extractedValues.get(l.name));
     }
     //case when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != ''
     @org.junit.jupiter.api.Test
@@ -190,10 +193,10 @@ public class LabelServiceTest {
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
         assertEquals(1,extractedValues.size(),"missing extracted value\n"+extractedValues);
         assertTrue(extractedValues.hasNonNull(l.name),"missing extracted value\n"+extractedValues);
-        assertFalse(extractedValues.isIterated(l.name));
+        assertFalse(extractedValues.get(l.name).get(0).isIterated());
         //It's a text node because it is quoted in the json
         assertInstanceOf(TextNode.class,extractedValues.get(l.name),"unexpected: "+extractedValues.get(l.name));
-        assertEquals("a1_alpha",((TextNode)extractedValues.get(l.name)).asText());
+        assertEquals("a1_alpha",((TextNode)extractedValues.get(l.name).get(0).data()).asText());
     }
     //case when m.dtype = 'LabelValueExtractor' and (m.jsonpath is null or m.jsonpath = '')
     @org.junit.jupiter.api.Test
@@ -206,10 +209,9 @@ public class LabelServiceTest {
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
         assertEquals(1,extractedValues.size(),"missing extracted value\n"+extractedValues);
         assertTrue(extractedValues.hasNonNull(l.name),"missing extracted value\n"+extractedValues);
-        assertFalse(extractedValues.isIterated(l.name));
+        assertFalse(extractedValues.get(l.name).get(0).isIterated());
         assertInstanceOf(ArrayNode.class,extractedValues.get(l.name),"unexpected: "+extractedValues.get(l.name));
-        ArrayNode arrayNode = (ArrayNode) extractedValues.get(l.name);
-        assertEquals(3,arrayNode.size(),"unexpected number of entries in "+arrayNode);
+        assertEquals(3,extractedValues.get(l.name).size(),"unexpected number of entries in "+extractedValues.get(l.name));
     }
 
     @Transactional

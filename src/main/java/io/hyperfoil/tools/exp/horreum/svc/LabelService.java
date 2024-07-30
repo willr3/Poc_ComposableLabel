@@ -34,209 +34,142 @@ public class LabelService {
 
     @Transactional
     public void calculateLabelValue(Label l, Long runId){
+
         ExtractedValues extractedValues = calculateExtractedValuesWithIterated(l,runId);
-        //this is a separate case because the reducer receives the raw extracted value not a wrapper object
-        boolean usesIterated = usesIterated(runId,l.id);
         Run r = Run.findById(runId);
-
-        LabelValue labelValue = new LabelValue();
-        labelValue.label = l;
-        labelValue.run = Run.findById(runId);
-        labelValue.iterated = l.hasForEach() || usesIterated;
-
-        if (l.extractors.size()==1) {
-            if (extractedValues.size() == 1) {
-                Extractor e = l.extractors.iterator().next();
-                LabelValue target = null;
-                if(Extractor.Type.VALUE.equals(e.type)){
-                    target = getLabelValue(runId,e.targetLabel.id);
-                }
-                if(target == null){
-                    //This is a problem but should not happen thanks to validation
-                }
-                String key = e.name;
-                JsonNode data = extractedValues.get(key);
-                labelValue.data = data;
-                //TODO also check that data is an array?
-                if (labelValue.iterated && target!=null) {
-                    for(int i=0; i<data.size(); i++){
-                        LabelValuePointer pointer = LabelValuePointer.create(i,labelValue,i,target);
-                        labelValue.addSource(pointer);
+        boolean isIterated = usesIterated(runId,l.id);
+        System.out.println("calculateLabelValue "+l.name+" isIterated = "+isIterated);
+        if(isIterated){
+            if(l.extractors.size()==1){
+                //we do not have to deal with multitype
+                List<ExtractedValue> evs = extractedValues.get(l.extractors.get(0).name);
+                for(ExtractedValue ev : evs){
+                    if(ev.isIterated){ //I think this should always be true
+                        if(ev.data.isArray()){
+                            ArrayNode arrayNode = (ArrayNode) ev.data;
+                            for(JsonNode childNode : arrayNode){
+                                LabelValue newValue = new LabelValue();
+                                newValue.data = childNode;
+                                if(l.reducer!=null){
+                                    newValue.data = l.reducer.evalJavascript(newValue.data);
+                                }
+                                newValue.label = l;
+                                newValue.run = r;
+                                if(ev.sourceValueId() > 0) {
+                                    LabelValue referenced = LabelValue.findById(ev.sourceValueId);
+                                    newValue.sources.add(referenced);
+                                }else{
+                                    //it doesn't have a source, this is ok
+                                }
+                                System.out.println("persisting iterated "+l.name+" data="+newValue.data);
+                                newValue.persist();
+                            }
+                        }else{
+                            //this means an error occurred in calculating
+                        }
+                    }else{
+                        //
+                        LabelValue newValue = new LabelValue();
+                        newValue.data = ev.data;
+                        if(l.reducer!=null){
+                            newValue.data = l.reducer.evalJavascript(newValue.data);
+                        }
+                        newValue.label = l;
+                        newValue.run = r;
+                        newValue.persist();
+                        if(ev.sourceValueId > 0){
+                            //this can happen when the value is derived from a previous label but not iterated
+                            LabelValue referenced = LabelValue.findById(ev.sourceValueId);
+                            newValue.sources.add(referenced);
+                        }
+                        System.out.println("persisting NOT-iterated "+l.name+" data="+newValue.data);
+                        newValue.persist();
                     }
                 }
-                if (l.reducer == null) {
-                    //Nothing to do
-                } else {
-                    //TODO reduce extractedValues before creating the labelValue
-                    //labelValue.data = reduce(labelValue.data)
-                    labelValue.data = l.reducer.evalJavascript(labelValue.data);
-                }
-                labelValue.persistAndFlush();
-                em.flush();
             } else {
-                //nothing was extracted for the 1 extractor...
-                //how exactly would this happen?
+                //this is the challenging bit where we have to deal with NxN et.al.
+                //TODO write this bit
+                System.out.println("need to figure out iterated multi extractor for "+l.name);
             }
-            //if we don't have to iterate over any values
-        }else if ( !labelValue.iterated ){
-            if(l.reducer == null){
-                labelValue.data = extractedValues.asNode();
+        } else {
+            //not iterated,
+            if(l.extractors.size()==1){
+                List<ExtractedValue> evs = extractedValues.get(l.extractors.get(0).name);
+                for(ExtractedValue ev : evs){
+                    if(ev.isIterated){
+                        //whoops, how did this happen
+                        System.out.println("HOW DID THIS HAPPEN? "+l.name+" is not iterated but extracted value is\n"+ev);
+                    }
+                    LabelValue newValue = new LabelValue();
+                    newValue.data = ev.data;
+                    if(l.reducer!=null){
+                        newValue.data = l.reducer.evalJavascript(newValue.data);
+                    }
+                    newValue.label = l;
+                    newValue.run = r;
+                    if(ev.sourceValueId > 0){
+                        //this can happen when the value is derived from a previous label but not iterated
+                        LabelValue referenced = LabelValue.findById(ev.sourceValueId);
+                        newValue.sources.add(referenced);
+                    }
+                    newValue.persist();
+                }
             }else{
-                //TODO handle reducer
-                //labelValue.data = reduce(extractedValues.asNode())
-                labelValue.data = l.reducer.evalJavascript(extractedValues.asNode());
+                System.out.println("we need to figure out multi extractor non iterated for "+l.name);
             }
-            labelValue.persistAndFlush();//trying to force it to persist because of issue with LabelValueExtractor fromString creating
-            //if we have to iterate over some of the extracted values
-            // we might not need to separate these two if we accept the added newNode overhead?
-        }else{// labelValue.iterated
-            ArrayNode results = JsonNodeFactory.instance.arrayNode();
 
-            labelValue.data = results;
-
-            switch (l.multiType){
-                case Length :
-
-                    int maxLength = l.extractors.stream()
-                            .filter(e -> Extractor.Type.VALUE.equals(e.type)&& e.targetLabel.hasForEach() && extractedValues.hasNonNull(e.name))
-                            .map(e->extractedValues.get(e.name).size()).max(Integer::compareTo).orElse(1);
-
-                    for(int i=0; i < maxLength; i++){
-                        ObjectNode newNode = JsonNodeFactory.instance.objectNode();
-                        for(Extractor e : l.extractors){
-                            //TODO also check if the value is an array?
-                            if(extractedValues.hasNonNull(e.name) && (e.forEach || extractedValues.isIterated(e.name))&& extractedValues.get(e.name).size() > i){
-                                newNode.set(e.name,extractedValues.get(e.name).get(i));
-                            }else if(!e.forEach &&  extractedValues.hasNonNull(e.name)  && (
-                                    Label.ScalarVariableMethod.All.equals(l.scalarMethod) ||
-                                            (i == 0 && Label.ScalarVariableMethod.First.equals(l.scalarMethod)) )
-                            ){
-                                newNode.set(e.name,extractedValues.get(e.name));
-                            }
-                            //create LvRef (if needed)
-                            if(extractedValues.isIterated(e.name)){
-                                //this is N db queries
-                                LabelValue target = getLabelValue(runId,e.targetLabel.id);
-                                if(target == null){
-                                    //no bueno
-                                }
-                                LabelValuePointer pointer = LabelValuePointer.create(results.size(), labelValue,i,target);
-                                labelValue.addSource(pointer);
-                            }
-                        }
-                        //newNode contains the parameters for this invocation
-                        if(l.reducer == null){
-                            results.add(newNode);
-                        }else{
-                            //TODO handle reducer results.add(reducedNode)
-                            //results.add(reduce(newNode));
-                            results.add(l.reducer.evalJavascript(newNode));
-                        }
-                    }
-                    break;
-                case NxN:
-                    List<Map<String,Integer>> references = new ArrayList<>();
-                    for(Extractor e : l.extractors){
-
-                        if( extractedValues.isIterated(e.name) || (e.forEach && Extractor.Type.VALUE.equals(e.type) && extractedValues.hasNonNull(e.name)) ) {
-                            int length = extractedValues.get(e.name).size();
-                            if(references.isEmpty()){
-                                for(int i=0; i<length; i++){
-                                    Map<String,Integer> entry = new HashMap<>();
-                                    entry.put(e.name,i);
-                                    references.add(entry);
-                                }
-                            }else{
-                                List<Map<String,Integer>> newReferencesList = new ArrayList<>();
-                                for(int i=0; i<length; i++){
-                                    for(int ri=0; ri < references.size(); ri++){
-                                        Map<String,Integer> copy = new HashMap(references.get(ri));
-                                        copy.put(e.name,i);
-                                        newReferencesList.add(copy);
-                                    }
-                                }
-                                references = newReferencesList;
-                            }
-                        }
-                    }
-                    for(int i=0; i< references.size(); i++){
-                        Map<String,Integer> map = references.get(i);
-                        ObjectNode newNode = JsonNodeFactory.instance.objectNode();
-                        for(Extractor e : l.extractors){
-                            if(map.containsKey(e.name)){
-                                int targetIndex = map.get(e.name);
-                                LabelValue target = getLabelValue(runId,e.targetLabel.id);
-                                if(target == null){
-                                    //yikes
-                                }
-                                LabelValuePointer pointer = LabelValuePointer.create(i,labelValue,targetIndex,target);
-                                labelValue.addSource(pointer);
-                                if(extractedValues.hasNonNull(e.name) && extractedValues.get(e.name).size() > targetIndex){
-                                    newNode.set(e.name,extractedValues.get(e.name).get(targetIndex));
-                                }
-                            }else if (extractedValues.hasNonNull(e.name) && (
-                                    Label.ScalarVariableMethod.All.equals(l.scalarMethod) ||
-                                            (i == 0 && Label.ScalarVariableMethod.First.equals(l.scalarMethod)) )
-                            ){
-                                newNode.set(e.name,extractedValues.get(e.name));
-                            }
-                        }
-                        if(l.reducer == null){
-                            results.add(newNode);
-                        }else{
-                            //TODO handle reducer results.add(reducedNode)
-                            //results.add(reduce(newNode));
-                            results.add(l.reducer.evalJavascript(newNode));
-                        }
-                    }
-                    break;
-            }
-            labelValue.persistAndFlush();
         }
-        labelValue.persistAndFlush();//added to see if it fixes the rhivos test
-        //this did fix it so there must be a codepath where persistAndFlush wasn't already called
-        //can we simplify to just calling persist and flush here?
+
     }
 
-    //ExtractedValues assumes one jsonnode for each extractor name.
-    //a multilabelvalue would potentially have more than 1 and would have a UID that needs to be tracked
-    //could store the multiple
-    public static class ExtractedValues {
-        private Map<String,Boolean> isIterated = new HashMap<>();
-        private Map<String, JsonNode> data = new HashMap<>();
+    public record ExtractedValue(long sourceValueId, boolean isIterated, JsonNode data){}
 
-        public void add(String name,JsonNode data,boolean iterated){
+    public static class ExtractedValues {
+        private Map<String,List<ExtractedValue>> values = new HashMap();
+
+        public void add(String name,long sourceId,boolean iterated,JsonNode data){
             if(data == null || data.isNull()){
                 return;
             }
-            this.isIterated.put(name,iterated);
-            this.data.put(name,data);
+            if (!values.containsKey(name)) {
+                values.put(name,new ArrayList<>());
+            }
+            ExtractedValue v = new ExtractedValue(sourceId,iterated,data);
+            values.get(name).add(v);
         }
         public boolean hasNonNull(String name){
-            return data.containsKey(name);
+            return values.containsKey(name) && !values.get(name).isEmpty();
         }
-        public boolean isIterated(String name){
-            return isIterated.getOrDefault(name,false);
+        public List<ExtractedValue> get(String name){
+            return values.get(name);
         }
-        public JsonNode get(String name){
-            return get(name,NullNode.getInstance());
-        }
-        public JsonNode get(String name,JsonNode defaultValue){
-            return data.getOrDefault(name, defaultValue);
-        }
-        public int size(){return data.size();}
-        public Set<String> getNames(){return data.keySet();}
+        public int size(){return values.size();}
+        public Set<String> getNames(){return values.keySet();}
         public ObjectNode asNode(){
             ObjectNode rtrn = JsonNodeFactory.instance.objectNode();
             for(String name : getNames()){
-                rtrn.set(name,get(name));
+                List<ExtractedValue> extractedValues = get(name);
+                if(extractedValues.size()==0){
+                    rtrn.set(name,JsonNodeFactory.instance.nullNode());
+                }else if(extractedValues.size()==1){
+                    rtrn.set(name,extractedValues.get(0).data);
+                }else{
+                    ArrayNode arrayNode = JsonNodeFactory.instance.arrayNode();
+                    for(ExtractedValue v : extractedValues){
+                        arrayNode.add(v.data);
+                    }
+                    rtrn.set(name,arrayNode);
+                }
             }
             return rtrn;
         }
         public String toString(){
             StringBuilder sb = new StringBuilder();
             for(String name : getNames()){
-                sb.append("\n  "+name+" "+isIterated(name)+" "+get(name));
+                sb.append("\n  "+name+" "+get(name).size());
+                for( ExtractedValue v : get(name)){
+                    sb.append("\n    "+v.sourceValueId+" "+v.isIterated+" "+v.data);
+                }
             }
             return sb.toString();
         }
@@ -583,12 +516,12 @@ public class LabelService {
             with m as (
                 select
                     e.name, e.type, e.jsonpath, e.foreach, e.column_name,
-                    lv.data as lv_data, lv.iterated as lv_iterated,
+                    lv.id as label_id,lv.data as lv_data, lv.iterated as lv_iterated,
                     r.data as run_data, r.metadata as run_metadata
                 from
-                    extractor e left join label_values lv on e.target_id = lv.label_id,
+                    extractor e full join label_values lv on e.target_id = lv.label_id,
                     run r where e.parent_id = :label_id and (lv.run_id = :run_id or lv.run_id is null) and r.id = :run_id),
-            n as (select m.name, m.type, m.jsonpath, m.foreach, m.lv_iterated ,m.lv_data, (case
+            n as (select m.name, m.type, m.jsonpath, m.foreach, m.lv_iterated ,m.label_id, (case
                 when m.type = 'PATH' and m.jsonpath is not null then jsonb_path_query_array(m.run_data,m.jsonpath::jsonpath)
                 when m.type = 'METADATA' and m.jsonpath is not null and m.column_name = 'metadata' then jsonb_path_query_array(m.run_metadata,m.jsonpath::jsonpath)
                 when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' and m.lv_iterated then extract_path_array(m.lv_data,m.jsonpath::jsonpath)
@@ -596,11 +529,12 @@ public class LabelService {
                 when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' then jsonb_path_query_array(m.lv_data,m.jsonpath::jsonpath)
                 when m.type = 'VALUE' and (m.jsonpath is null or m.jsonpath = '') then to_jsonb(ARRAY[m.lv_data])
                 else '[]'::jsonb end) as found from m)
-            select n.name as name,(case when jsonb_array_length(n.found) > 1 or strpos(n.jsonpath,'[*]') > 0 then n.found else n.found->0 end) as data, n.lv_iterated as lv_iterated from n
+            select n.name as name,n.label_id,(case when jsonb_array_length(n.found) > 1 or strpos(n.jsonpath,'[*]') > 0 then n.found else n.found->0 end) as data, n.lv_iterated as lv_iterated from n
         """).setParameter("run_id",runId).setParameter("label_id",l.id)
                 //TODO add logging in else '[]'
                 .unwrap(NativeQuery.class)
                 .addScalar("name",String.class)
+                .addScalar("label_id",Long.class)
                 .addScalar("data", JsonBinaryType.INSTANCE)
                 .addScalar("lv_iterated",Boolean.class)
                 .getResultList();
@@ -612,9 +546,11 @@ public class LabelService {
             for(int i=0; i<found.size(); i++){
                 Object[] row = (Object[])found.get(i);
                 String name = (String)row[0];
-                JsonNode data = (JsonNode) row[1];
-                Boolean iterated = (Boolean)row[2];
-                rtrn.add(name,data, iterated != null && iterated);
+                Long labelId = (Long) row[1];
+                JsonNode data = (JsonNode) row[2];
+                Boolean iterated = (Boolean)row[3];
+                System.out.println(name+" id="+labelId+" iterated="+iterated+" data="+data);
+                rtrn.add(name,labelId == null ? -1 : labelId,iterated != null && iterated,data);
             }
         }
         return rtrn;

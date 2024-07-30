@@ -24,7 +24,8 @@ public class LabelValue extends PanacheEntity {
     public boolean iterated; //if the value contains an array that represents the result of
 
     @ElementCollection(fetch = FetchType.EAGER)
-    @OneToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.EAGER, orphanRemoval = true, mappedBy = "child")
+    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.EAGER )
+    @JoinTable(name = "label_value_sources",uniqueConstraints = {})
     public Set<LabelValue> sources = new HashSet<>();//what label_values were used to create this label_value
 
     @ManyToOne
