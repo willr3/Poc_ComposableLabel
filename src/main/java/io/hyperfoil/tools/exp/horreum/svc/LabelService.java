@@ -37,11 +37,10 @@ public class LabelService {
 
         ExtractedValues extractedValues = calculateExtractedValuesWithIterated(l,runId);
         Run r = Run.findById(runId);
-        boolean isIterated = usesIterated(runId,l.id);
+        boolean isIterated = l.extractors.stream().anyMatch(e->e.forEach);
         System.out.println("calculateLabelValue "+l.name+" isIterated = "+isIterated);
-        if(isIterated){
             if(l.extractors.size()==1){
-                //we do not have to deal with multitype
+                //we do not have to deal with multitype if there is only one extractor
                 List<ExtractedValue> evs = extractedValues.get(l.extractors.get(0).name);
                 for(ExtractedValue ev : evs){
                     if(ev.isIterated){ //I think this should always be true
@@ -61,7 +60,7 @@ public class LabelService {
                                 }else{
                                     //it doesn't have a source, this is ok
                                 }
-                                System.out.println("persisting iterated "+l.name+" data="+newValue.data);
+                                System.out.println("persisting iterated "+l.name+" data="+newValue.data+" sources="+newValue.sources);
                                 newValue.persist();
                             }
                         }else{
@@ -82,7 +81,7 @@ public class LabelService {
                             LabelValue referenced = LabelValue.findById(ev.sourceValueId);
                             newValue.sources.add(referenced);
                         }
-                        System.out.println("persisting NOT-iterated "+l.name+" data="+newValue.data);
+                        System.out.println("persisting NOT-iterated "+l.name+" data="+newValue.data+" sources="+newValue.sources);
                         newValue.persist();
                     }
                 }
@@ -90,35 +89,33 @@ public class LabelService {
                 //this is the challenging bit where we have to deal with NxN et.al.
                 //TODO write this bit
                 System.out.println("need to figure out iterated multi extractor for "+l.name);
-            }
-        } else {
-            //not iterated,
-            if(l.extractors.size()==1){
-                List<ExtractedValue> evs = extractedValues.get(l.extractors.get(0).name);
-                for(ExtractedValue ev : evs){
-                    if(ev.isIterated){
-                        //whoops, how did this happen
-                        System.out.println("HOW DID THIS HAPPEN? "+l.name+" is not iterated but extracted value is\n"+ev);
-                    }
-                    LabelValue newValue = new LabelValue();
-                    newValue.data = ev.data;
-                    if(l.reducer!=null){
-                        newValue.data = l.reducer.evalJavascript(newValue.data);
-                    }
-                    newValue.label = l;
-                    newValue.run = r;
-                    if(ev.sourceValueId > 0){
-                        //this can happen when the value is derived from a previous label but not iterated
-                        LabelValue referenced = LabelValue.findById(ev.sourceValueId);
-                        newValue.sources.add(referenced);
-                    }
-                    newValue.persist();
-                }
-            }else{
-                System.out.println("we need to figure out multi extractor non iterated for "+l.name);
-            }
+                System.out.println(extractedValues);
+                switch (l.multiType){
+                    case Length :
+                        int maxLength = l.extractors.stream().mapToInt((e)->{
+                            int rtrn = 0;
+                            if(e.forEach){//if the extractor iterates then we expect the extracted values to be arrays
+                                //if there is more than 1 list of extracted values how did that happen and do we want max length or sum of lengths?
+                                //more than one iterated would happen when iterating over an iterated label?
+                                rtrn = extractedValues.get(e.name).stream().mapToInt(ev->ev.data().size()).sum();
+                            }else{
+                                rtrn = extractedValues.get(e.name).size();
+                            }
+                            return rtrn;
+                        }).max().orElse(0);
+                        for(int i=0; i<maxLength; i++){
+                            ObjectNode valueNode = JsonNodeFactory.instance.objectNode();
+                            for(String name: extractedValues.getNames()){
+                                List<ExtractedValue> evs = extractedValues.get(name);
 
-        }
+                            }
+                        }
+
+                        break;
+                }
+
+
+            }
 
     }
 
@@ -168,7 +165,8 @@ public class LabelService {
             for(String name : getNames()){
                 sb.append("\n  "+name+" "+get(name).size());
                 for( ExtractedValue v : get(name)){
-                    sb.append("\n    "+v.sourceValueId+" "+v.isIterated+" "+v.data);
+
+                    sb.append("\n    source="+v.sourceValueId+" iter="+v.isIterated+" data="+v.data);
                 }
             }
             return sb.toString();
@@ -516,20 +514,20 @@ public class LabelService {
             with m as (
                 select
                     e.name, e.type, e.jsonpath, e.foreach, e.column_name,
-                    lv.id as label_id,lv.data as lv_data, lv.iterated as lv_iterated,
+                    lv.id as label_id, lv.data as lv_data,
                     r.data as run_data, r.metadata as run_metadata
                 from
                     extractor e full join label_values lv on e.target_id = lv.label_id,
                     run r where e.parent_id = :label_id and (lv.run_id = :run_id or lv.run_id is null) and r.id = :run_id),
-            n as (select m.name, m.type, m.jsonpath, m.foreach, m.lv_iterated ,m.label_id, (case
+            n as (select m.name, m.type, m.jsonpath, m.foreach, m.label_id, (case
                 when m.type = 'PATH' and m.jsonpath is not null then jsonb_path_query_array(m.run_data,m.jsonpath::jsonpath)
                 when m.type = 'METADATA' and m.jsonpath is not null and m.column_name = 'metadata' then jsonb_path_query_array(m.run_metadata,m.jsonpath::jsonpath)
-                when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' and m.lv_iterated then extract_path_array(m.lv_data,m.jsonpath::jsonpath)
+                when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' and m.foreach then extract_path_array(m.lv_data,m.jsonpath::jsonpath)
                 
                 when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' then jsonb_path_query_array(m.lv_data,m.jsonpath::jsonpath)
                 when m.type = 'VALUE' and (m.jsonpath is null or m.jsonpath = '') then to_jsonb(ARRAY[m.lv_data])
                 else '[]'::jsonb end) as found from m)
-            select n.name as name,n.label_id,(case when jsonb_array_length(n.found) > 1 or strpos(n.jsonpath,'[*]') > 0 then n.found else n.found->0 end) as data, n.lv_iterated as lv_iterated from n
+            select n.name as name,n.label_id,(case when jsonb_array_length(n.found) > 1 or strpos(n.jsonpath,'[*]') > 0 then n.found else n.found->0 end) as data, n.foreach as lv_iterated from n
         """).setParameter("run_id",runId).setParameter("label_id",l.id)
                 //TODO add logging in else '[]'
                 .unwrap(NativeQuery.class)

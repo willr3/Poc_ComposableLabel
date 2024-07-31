@@ -21,9 +21,7 @@ import java.util.Set;
 )
 public class LabelValue extends PanacheEntity {
 
-    public boolean iterated; //if the value contains an array that represents the result of
-
-    @ElementCollection(fetch = FetchType.EAGER)
+    //@ElementCollection(fetch = FetchType.EAGER)
     @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.EAGER )
     @JoinTable(name = "label_value_sources",uniqueConstraints = {})
     public Set<LabelValue> sources = new HashSet<>();//what label_values were used to create this label_value

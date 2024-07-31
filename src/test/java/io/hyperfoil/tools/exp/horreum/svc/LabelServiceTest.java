@@ -179,7 +179,6 @@ public class LabelServiceTest {
         assertEquals(1,extractedValues.size(),"missing extracted value\n"+extractedValues);
         assertTrue(extractedValues.hasNonNull(l.name),"missing extracted value\n"+extractedValues);
         assertFalse(extractedValues.get(l.name).get(0).isIterated());
-        assertInstanceOf(ArrayNode.class,extractedValues.get(l.name),"unexpected: "+extractedValues.get(l.name));
         assertEquals(3,extractedValues.get(l.name).size(),"unexpected number of entries in "+extractedValues.get(l.name));
     }
     //case when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != ''
@@ -209,10 +208,63 @@ public class LabelServiceTest {
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
         assertEquals(1,extractedValues.size(),"missing extracted value\n"+extractedValues);
         assertTrue(extractedValues.hasNonNull(l.name),"missing extracted value\n"+extractedValues);
-        assertFalse(extractedValues.get(l.name).get(0).isIterated());
-        assertInstanceOf(ArrayNode.class,extractedValues.get(l.name),"unexpected: "+extractedValues.get(l.name));
-        assertEquals(3,extractedValues.get(l.name).size(),"unexpected number of entries in "+extractedValues.get(l.name));
+        assertTrue(extractedValues.get(l.name).get(0).isIterated());
+        assertEquals(1,extractedValues.get(l.name).size(),"unexpected number of entries in "+extractedValues.get(l.name));
+        assertInstanceOf(ArrayNode.class,extractedValues.get(l.name).get(0).data(),"unexpected: "+extractedValues.get(l.name));
+        assertEquals(3,extractedValues.get(l.name).get(0).data().size(),"unexpected number of entries in "+extractedValues.get(l.name)+"[0]");
     }
+
+    @Transactional
+    public Test createTest_doubleIter(){
+        Test t = new Test("doubleIter-test");
+        Label foo = new Label("foo",t)
+                .loadExtractors(Extractor.fromString("$.foo").setName("foo"));
+        Label iterFoo = new Label("iterFoo",t)
+                .loadExtractors(Extractor.fromString("foo[]").setName("iterFoo"));
+        Label bar = new Label("bar",t)
+                .loadExtractors(Extractor.fromString("iterFoo:$.bar").setName("bar"));
+        Label buz = new Label("buz",t)
+                .loadExtractors(Extractor.fromString("iterFoo:$.buz").setName("buz"));
+        Label iterBar = new Label("iterBar",t)
+                .loadExtractors(Extractor.fromString("bar[]").setName("iterBar"));
+        Label iterBarKey = new Label("iterBarKey",t)
+                .loadExtractors(Extractor.fromString("iterBar:$.key"));
+        Label iterBarSum = new Label("iterBarSum",t)
+                .loadExtractors(
+                        Extractor.fromString("iterBar:$.key").setName("key"),
+                        Extractor.fromString("iterBar:$.value").setName("value")
+                );
+        iterBarSum.setReducer("({key,value})=>key+value");
+        t.loadLabels(foo,iterFoo,bar,buz,iterBar,iterBarKey,iterBarSum);
+        t.persistAndFlush();
+        return t;
+    }
+    @Transactional
+    public Run createRun_doubleIter(Test t) throws JsonProcessingException {
+        Run r = new Run(
+                t.id,
+                new ObjectMapper().readTree("""
+                        {
+                          "foo" : [
+                          	{ "bar": [ {"key":"first","value":"uno"},{"key":"second","value":"dos"}], "buz": [ {"key":"first","value":"uno"},{"key":"second","value":"dos"}] },
+                          	{ "bar": [ {"key":"primero"},{"key":"segundo","value":"two"}], "buz": [ {"key":"first","value":"uno"},{"key":"second","value":"dos"}] }
+                          ]
+                        }
+                        """),
+                new ObjectMapper().readTree("{}")
+        );
+        r.persist();
+        return r;
+    }
+    @org.junit.jupiter.api.Test
+    public void createLabelValues_doubleIter() throws JsonProcessingException {
+        Test t = createTest_doubleIter();
+        Run r = createRun_doubleIter(t);
+        labelService.calculateLabelValues(t.labels,r.id);
+
+        System.out.println("test="+t.id+" run="+r.id);
+    }
+
 
     @Transactional
     public Test createTest_reducing(){
@@ -588,5 +640,7 @@ public class LabelServiceTest {
         });
 
     }
+
+
 
 }
