@@ -3,10 +3,8 @@ package io.hyperfoil.tools.exp.horreum.svc;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.hyperfoil.tools.exp.horreum.entity.*;
-import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
 import io.hyperfoil.tools.exp.horreum.pasted.JsonBinaryType;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -41,7 +39,7 @@ public class LabelService {
         System.out.println("calculateLabelValue "+l.name+" isIterated = "+isIterated);
             if(l.extractors.size()==1){
                 //we do not have to deal with multitype if there is only one extractor
-                List<ExtractedValue> evs = extractedValues.get(l.extractors.get(0).name);
+                List<ExtractedValue> evs = extractedValues.getByName(l.extractors.get(0).name);
                 for(ExtractedValue ev : evs){
                     if(ev.isIterated){ //I think this should always be true
                         if(ev.data.isArray()){
@@ -97,16 +95,16 @@ public class LabelService {
                             if(e.forEach){//if the extractor iterates then we expect the extracted values to be arrays
                                 //if there is more than 1 list of extracted values how did that happen and do we want max length or sum of lengths?
                                 //more than one iterated would happen when iterating over an iterated label?
-                                rtrn = extractedValues.get(e.name).stream().mapToInt(ev->ev.data().size()).sum();
+                                rtrn = extractedValues.getByName(e.name).stream().mapToInt(ev->ev.data().size()).sum();
                             }else{
-                                rtrn = extractedValues.get(e.name).size();
+                                rtrn = extractedValues.getByName(e.name).size();
                             }
                             return rtrn;
                         }).max().orElse(0);
                         for(int i=0; i<maxLength; i++){
                             ObjectNode valueNode = JsonNodeFactory.instance.objectNode();
                             for(String name: extractedValues.getNames()){
-                                List<ExtractedValue> evs = extractedValues.get(name);
+                                List<ExtractedValue> evs = extractedValues.getByName(name);
 
                             }
                         }
@@ -122,30 +120,43 @@ public class LabelService {
     public record ExtractedValue(long sourceValueId, boolean isIterated, JsonNode data){}
 
     public static class ExtractedValues {
-        private Map<String,List<ExtractedValue>> values = new HashMap();
+        private Map<String,List<ExtractedValue>> byName = new HashMap();
+        private Map<Long,Map<String,List<ExtractedValue>>> bySource = new HashMap<>();
 
         public void add(String name,long sourceId,boolean iterated,JsonNode data){
             if(data == null || data.isNull()){
                 return;
             }
-            if (!values.containsKey(name)) {
-                values.put(name,new ArrayList<>());
+            if (!byName.containsKey(name)) {
+                byName.put(name,new ArrayList<>());
+            }
+            if(!bySource.containsKey(sourceId)){
+                bySource.put(sourceId,new HashMap<>());
+            }
+            if(!bySource.get(sourceId).containsKey(name)){
+                bySource.get(sourceId).put(name,new ArrayList<>());
             }
             ExtractedValue v = new ExtractedValue(sourceId,iterated,data);
-            values.get(name).add(v);
+            byName.get(name).add(v);
+            bySource.get(sourceId).get(name).add(v);
         }
         public boolean hasNonNull(String name){
-            return values.containsKey(name) && !values.get(name).isEmpty();
+            return byName.containsKey(name) && !byName.get(name).isEmpty();
         }
-        public List<ExtractedValue> get(String name){
-            return values.get(name);
+        public List<ExtractedValue> getByName(String name){
+            return byName.get(name);
         }
-        public int size(){return values.size();}
-        public Set<String> getNames(){return values.keySet();}
+        public Map<String,List<ExtractedValue>> getFromSource(long sourceId){
+            return bySource.getOrDefault(sourceId,new HashMap<>());
+        }
+        public boolean hasSourcedValues(){return bySource.keySet().stream().anyMatch(v->v>0);}
+        public int size(){return byName.size();}
+        public Set<String> getNames(){return byName.keySet();}
+        public Set<Long> getSourceIds(){return bySource.keySet();}
         public ObjectNode asNode(){
             ObjectNode rtrn = JsonNodeFactory.instance.objectNode();
             for(String name : getNames()){
-                List<ExtractedValue> extractedValues = get(name);
+                List<ExtractedValue> extractedValues = getByName(name);
                 if(extractedValues.size()==0){
                     rtrn.set(name,JsonNodeFactory.instance.nullNode());
                 }else if(extractedValues.size()==1){
@@ -163,10 +174,19 @@ public class LabelService {
         public String toString(){
             StringBuilder sb = new StringBuilder();
             for(String name : getNames()){
-                sb.append("\n  "+name+" "+get(name).size());
-                for( ExtractedValue v : get(name)){
-
-                    sb.append("\n    source="+v.sourceValueId+" iter="+v.isIterated+" data="+v.data);
+                sb.append("name="+name+" "+ getByName(name).size()+"\n");
+                for( ExtractedValue v : getByName(name)){
+                    sb.append("  source="+v.sourceValueId+" iter="+v.isIterated+" data="+v.data+"\n");
+                }
+            }
+            for(Long sourceId : getSourceIds()){
+                Map<String,List<ExtractedValue>> evMap = getFromSource(sourceId);
+                sb.append("source="+sourceId+" keyCount="+evMap.size()+"\n");
+                for(String name : evMap.keySet()){
+                    sb.append("  "+name+"\n");
+                    for( ExtractedValue v : evMap.get(name)){
+                        sb.append("    iter="+v.isIterated+" data="+v.data+"\n");
+                    }
                 }
             }
             return sb.toString();

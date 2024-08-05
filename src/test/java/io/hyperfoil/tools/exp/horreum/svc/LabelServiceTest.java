@@ -11,7 +11,6 @@ import io.hyperfoil.tools.exp.horreum.entity.*;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-import jakarta.json.Json;
 import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.validation.ConstraintViolation;
@@ -22,7 +21,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -146,9 +144,9 @@ public class LabelServiceTest {
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
 
         assertTrue(extractedValues.hasNonNull(l.name),extractedValues.toString());
-        assertFalse(extractedValues.get(l.name).get(0).isIterated());
-        assertInstanceOf(List.class,extractedValues.get(l.name));
-        List<LabelService.ExtractedValue> values = extractedValues.get(l.name);
+        assertFalse(extractedValues.getByName(l.name).get(0).isIterated());
+        assertInstanceOf(List.class,extractedValues.getByName(l.name));
+        List<LabelService.ExtractedValue> values = extractedValues.getByName(l.name);
 
     }
     //case when m.dtype = 'RunMetadataExtractor' and m.jsonpath is not null and m.column_name = 'metadata'
@@ -160,9 +158,9 @@ public class LabelServiceTest {
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
         System.out.println(extractedValues);
         assertTrue(extractedValues.hasNonNull(l.name));
-        assertFalse(extractedValues.get(l.name).get(0).isIterated());
+        assertFalse(extractedValues.getByName(l.name).get(0).isIterated());
         //It's a text node because it is quoted in the json
-        assertInstanceOf(TextNode.class,extractedValues.get(l.name).get(0).data());
+        assertInstanceOf(TextNode.class,extractedValues.getByName(l.name).get(0).data());
     }
     //case when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' and m.foreach and jsonb_typeof(m.lv_data) = 'array'
 
@@ -178,8 +176,8 @@ public class LabelServiceTest {
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
         assertEquals(1,extractedValues.size(),"missing extracted value\n"+extractedValues);
         assertTrue(extractedValues.hasNonNull(l.name),"missing extracted value\n"+extractedValues);
-        assertFalse(extractedValues.get(l.name).get(0).isIterated());
-        assertEquals(3,extractedValues.get(l.name).size(),"unexpected number of entries in "+extractedValues.get(l.name));
+        assertFalse(extractedValues.getByName(l.name).get(0).isIterated());
+        assertEquals(3,extractedValues.getByName(l.name).size(),"unexpected number of entries in "+extractedValues.getByName(l.name));
     }
     //case when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != ''
     @org.junit.jupiter.api.Test
@@ -192,10 +190,10 @@ public class LabelServiceTest {
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
         assertEquals(1,extractedValues.size(),"missing extracted value\n"+extractedValues);
         assertTrue(extractedValues.hasNonNull(l.name),"missing extracted value\n"+extractedValues);
-        assertFalse(extractedValues.get(l.name).get(0).isIterated());
+        assertFalse(extractedValues.getByName(l.name).get(0).isIterated());
         //It's a text node because it is quoted in the json
-        assertInstanceOf(TextNode.class,extractedValues.get(l.name),"unexpected: "+extractedValues.get(l.name));
-        assertEquals("a1_alpha",((TextNode)extractedValues.get(l.name).get(0).data()).asText());
+        assertInstanceOf(TextNode.class,extractedValues.getByName(l.name),"unexpected: "+extractedValues.getByName(l.name));
+        assertEquals("a1_alpha",((TextNode)extractedValues.getByName(l.name).get(0).data()).asText());
     }
     //case when m.dtype = 'LabelValueExtractor' and (m.jsonpath is null or m.jsonpath = '')
     @org.junit.jupiter.api.Test
@@ -208,10 +206,10 @@ public class LabelServiceTest {
         LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
         assertEquals(1,extractedValues.size(),"missing extracted value\n"+extractedValues);
         assertTrue(extractedValues.hasNonNull(l.name),"missing extracted value\n"+extractedValues);
-        assertTrue(extractedValues.get(l.name).get(0).isIterated());
-        assertEquals(1,extractedValues.get(l.name).size(),"unexpected number of entries in "+extractedValues.get(l.name));
-        assertInstanceOf(ArrayNode.class,extractedValues.get(l.name).get(0).data(),"unexpected: "+extractedValues.get(l.name));
-        assertEquals(3,extractedValues.get(l.name).get(0).data().size(),"unexpected number of entries in "+extractedValues.get(l.name)+"[0]");
+        assertTrue(extractedValues.getByName(l.name).get(0).isIterated());
+        assertEquals(1,extractedValues.getByName(l.name).size(),"unexpected number of entries in "+extractedValues.getByName(l.name));
+        assertInstanceOf(ArrayNode.class,extractedValues.getByName(l.name).get(0).data(),"unexpected: "+extractedValues.getByName(l.name));
+        assertEquals(3,extractedValues.getByName(l.name).get(0).data().size(),"unexpected number of entries in "+extractedValues.getByName(l.name)+"[0]");
     }
 
     @Transactional
@@ -227,12 +225,14 @@ public class LabelServiceTest {
                 .loadExtractors(Extractor.fromString("iterFoo:$.buz").setName("buz"));
         Label iterBar = new Label("iterBar",t)
                 .loadExtractors(Extractor.fromString("bar[]").setName("iterBar"));
+        Label iterBuz = new Label("iterBuz",t)
+                .loadExtractors(Extractor.fromString("buz[]").setName("iterBuz"));
         Label iterBarKey = new Label("iterBarKey",t)
                 .loadExtractors(Extractor.fromString("iterBar:$.key"));
         Label iterBarSum = new Label("iterBarSum",t)
                 .loadExtractors(
                         Extractor.fromString("iterBar:$.key").setName("key"),
-                        Extractor.fromString("iterBar:$.value").setName("value")
+                        Extractor.fromString("iterBuz:$.value").setName("value")
                 );
         iterBarSum.setReducer("({key,value})=>key+value");
         t.loadLabels(foo,iterFoo,bar,buz,iterBar,iterBarKey,iterBarSum);
