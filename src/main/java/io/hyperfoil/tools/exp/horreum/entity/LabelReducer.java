@@ -80,7 +80,9 @@ public class LabelReducer  extends PanacheEntity {
                 //it's a PoC, let's make sure we don't copy this part of the code to Horreum
             } finally {
                 context.leave();
-                System.out.println("the console output of the js\n"+function+"\n"+out);
+                if(!out.toString().isBlank()){
+                    System.err.println("the console output of the js\n"+function+"\n"+out);
+                }
             }
         }
 

@@ -22,7 +22,7 @@ import java.util.Set;
 public class LabelValue extends PanacheEntity {
 
     //@ElementCollection(fetch = FetchType.EAGER)
-    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE }, fetch = FetchType.EAGER )
+    @ManyToMany(cascade = { CascadeType.ALL }, fetch = FetchType.EAGER )
     @JoinTable(name = "label_value_sources",uniqueConstraints = {})
     public Set<LabelValue> sources = new HashSet<>();//what label_values were used to create this label_value
 
@@ -37,6 +37,8 @@ public class LabelValue extends PanacheEntity {
     @Type(JsonBinaryType.class)
     public JsonNode data;
 
+    public int ordinal;//used to keep extracted values together when coming from an iterated source
+
     public void addSource(LabelValue source){
         sources.add(source);
     }
@@ -46,7 +48,7 @@ public class LabelValue extends PanacheEntity {
 
     @Override
     public String toString(){
-        return String.format("LabelValue[run_id=%d, label_id=%d data=%s]",run.id,label.id,data==null ? "null":data.toString());
+        return String.format("LabelValue[id=%d, run_id=%d, label_id=%d, ordinal=%d, data=%s]",id,run.id,label.id,ordinal,data==null ? "null":data.toString());
     }
 
     @Override
