@@ -36,6 +36,7 @@ public class LabelService {
     @Transactional
     public void calculateLabelValue(Label l, Long runId){
         ExtractedValues extractedValues = calculateExtractedValuesWithIterated(l,runId);
+        System.out.println(extractedValues);
         Run r = Run.findById(runId);
         if(l.extractors.size()==1){
             //we do not have to deal with multitype if there is only one extractor
@@ -56,7 +57,9 @@ public class LabelService {
                             newValue.label = l;
                             newValue.run = r;
                             if(ev.sourceValueId() > 0) {
+
                                 LabelValue referenced = LabelValue.findById(ev.sourceValueId);
+                                System.out.println("create reference to "+ev.sourceValueId+" "+referenced);
                                 newValue.sources.add(referenced);
                             }else{
                                 //it doesn't have a source, this is ok
@@ -580,19 +583,6 @@ public class LabelService {
 
 
 
-    /*
-     * Detects direct dependency on an iterated label_value
-     * @return true iff the label depends on an iterated label_value for the specific run
-     */
-    public boolean usesIterated(long runId, long labelId){
-        Boolean response = (Boolean) em.createNativeQuery("""
-                select exists (select 1 from extractor e left join label_values lv on e.target_id = lv.label_id where e.parent_id = :labelId and  lv.run_id = :runId and lv.iterated)
-                """).setParameter("labelId",labelId)
-                .setParameter("runId",runId)
-                .unwrap(NativeQuery.class)
-                .getSingleResult();
-        return response != null && response;
-    }
 
     public LabelValue getLabelValue(long runId, long labelId){
         return LabelValue.find("from LabelValue lv where lv.run.id=?1 and lv.label.id=?2",runId,labelId).firstResult();

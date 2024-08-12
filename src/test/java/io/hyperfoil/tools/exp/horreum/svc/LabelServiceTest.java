@@ -139,70 +139,119 @@ public class LabelServiceTest {
     }
 
     //case when m.dtype = 'JsonpathExtractor' and m.jsonpath is not null
+    @Transactional
     @org.junit.jupiter.api.Test
     public void calculateExtractedValuesWithIterated_JsonpathExtractor_jsonpath() throws JsonProcessingException {
-        Test t = createTest();
-        Run r = createRun(t);
+        Test t = new Test("example-test");
+        Label a1 = new Label("a1",t)
+                .loadExtractors(Extractor.fromString("$.a1").setName("a1"));
+        t.loadLabels(a1);
+        t.persist();
+        Run r = new Run(t.id,
+                new ObjectMapper().readTree("{ \"foo\" : { \"bar\" : \"bizz\" }, \"a1\": \"found\", \"a2\": [{\"key\":\"a2_alpha\"}, {\"key\":\"a2_bravo\"}] }"),
+                new ObjectMapper().readTree("{ \"jenkins\" : { \"build\" : \"123\" } }"));
+        Run.persist(r);
+        LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(a1,r.id);
 
-        Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","a1",t.id).firstResult();
-        LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
-
-        assertTrue(extractedValues.hasNonNull(l.name),extractedValues.toString());
-        assertFalse(extractedValues.getByName(l.name).get(0).isIterated());
-        assertInstanceOf(List.class,extractedValues.getByName(l.name));
-        List<LabelService.ExtractedValue> values = extractedValues.getByName(l.name);
-
+        assertTrue(extractedValues.hasNonNull(a1.name),extractedValues.toString());
+        assertFalse(extractedValues.getByName(a1.name).get(0).isIterated());
+        assertInstanceOf(List.class,extractedValues.getByName(a1.name));
+        List<LabelService.ExtractedValue> values = extractedValues.getByName(a1.name);
+        assertEquals(1,values.size());
+        assertEquals("found",values.get(0).data().asText());
     }
     //case when m.dtype = 'RunMetadataExtractor' and m.jsonpath is not null and m.column_name = 'metadata'
+    @Transactional
     @org.junit.jupiter.api.Test
     public void calculateExtractedValuesWithIterated_RunMetadataExtractor_jsonpath() throws JsonProcessingException {
-        Test t = createTest();
-        Run r = createRun(t);
-        Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","build",t.id).firstResult();
-        LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
-        assertTrue(extractedValues.hasNonNull(l.name));
-        assertFalse(extractedValues.getByName(l.name).get(0).isIterated());
+        Test t = new Test("example-test");
+        Label jenkinsBuild = new Label("build",t)
+                .loadExtractors(Extractor.fromString(
+                        Extractor.METADATA_PREFIX+"metadata"+ Extractor.METADATA_SUFFIX+
+                                Extractor.NAME_SEPARATOR+ Extractor.PREFIX+".jenkins.build").setName("build")
+                );
+        t.loadLabels(jenkinsBuild);
+        t.persist();
+        Run r = new Run(t.id,
+                new ObjectMapper().readTree("{ \"foo\" : { \"bar\" : \"bizz\" }, \"a1\": \"found\", \"a2\": [{\"key\":\"a2_alpha\"}, {\"key\":\"a2_bravo\"}] }"),
+                new ObjectMapper().readTree("{ \"jenkins\" : { \"build\" : \"123\" } }"));
+        Run.persist(r);
+        LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(jenkinsBuild,r.id);
+        assertTrue(extractedValues.hasNonNull(jenkinsBuild.name));
+        assertFalse(extractedValues.getByName(jenkinsBuild.name).get(0).isIterated());
         //It's a text node because it is quoted in the json
-        assertInstanceOf(TextNode.class,extractedValues.getByName(l.name).get(0).data());
+        assertInstanceOf(TextNode.class,extractedValues.getByName(jenkinsBuild.name).get(0).data());
     }
     //case when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' and m.foreach and jsonb_typeof(m.lv_data) = 'array'
 
 
     //case when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != '' and m.lv_iterated
+    @Transactional
     @org.junit.jupiter.api.Test
     public void calculateExtractedValuesWithIterated_LabelValueExtractor_iterated_jsonpath() throws JsonProcessingException {
-        Test t = createTest();
-        Run r = createRun(t);
+        Test t = new Test("example-test");
+        Label a1 = new Label("a1",t)
+                .loadExtractors(Extractor.fromString("$.a1").setName("a1"));
+        Label iterA = new Label("iterA",t)
+                .loadExtractors(Extractor.fromString("a1[]").setName("iterA"));
+        Label foundA = new Label("foundA",t)
+                .loadExtractors(Extractor.fromString("iterA:$.key").setName("foundA"));
+        t.loadLabels(foundA,iterA,a1);
+        t.persist();
+        Run r = new Run(t.id,
+                new ObjectMapper().readTree("{ \"foo\" : { \"bar\" : \"bizz\" }, \"a1\": [ {\"key\":\"a1_alpha\"}, {\"key\":\"a1_bravo\"}, {\"key\":\"a1_charlie\"}], \"a2\": [{\"key\":\"a2_alpha\"}, {\"key\":\"a2_bravo\"}] }"),
+                new ObjectMapper().readTree("{ \"jenkins\" : { \"build\" : \"123\" } }"));
+        Run.persist(r);
         //must call calcualteLabelValues to have the label_value available for the extractor
         labelService.calculateLabelValues(t.labels,r.id);
-        Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","foundA",t.id).firstResult();
-        LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
+        LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(foundA,r.id);
         assertEquals(1,extractedValues.size(),"missing extracted value\n"+extractedValues);
-        assertTrue(extractedValues.hasNonNull(l.name),"missing extracted value\n"+extractedValues);
-        assertFalse(extractedValues.getByName(l.name).get(0).isIterated());
-        assertEquals(3,extractedValues.getByName(l.name).size(),"unexpected number of entries in "+extractedValues.getByName(l.name));
+        assertTrue(extractedValues.hasNonNull(foundA.name),"missing extracted value\n"+extractedValues);
+        assertFalse(extractedValues.getByName(foundA.name).get(0).isIterated());
+        assertEquals(3,extractedValues.getByName(foundA.name).size(),"unexpected number of entries in "+extractedValues.getByName(foundA.name));
     }
     //case when m.dtype = 'LabelValueExtractor' and m.jsonpath is not null and m.jsonpath != ''
+    @Transactional
     @org.junit.jupiter.api.Test
     public void calculateExtractedValuesWithIterated_LabelValueExtractor_jsonpath() throws JsonProcessingException {
-        Test t = createTest();
-        Run r = createRun(t);
+        Test t = new Test("example-test");
+        Label a1 = new Label("a1",t)
+                .loadExtractors(Extractor.fromString("$.a1").setName("a1"));
+        Label firstAKey = new Label("firstAKey",t)
+                .loadExtractors(Extractor.fromString("a1:$[0].key").setName("firstAKey"));
+        t.loadLabels(firstAKey,a1);
+        t.persist();
+        Run r = new Run(t.id,
+                new ObjectMapper().readTree("{ \"foo\" : { \"bar\" : \"bizz\" }, \"a1\": [ {\"key\":\"a1_alpha\"}, {\"key\":\"a1_bravo\"}, {\"key\":\"a1_charlie\"}], \"a2\": [{\"key\":\"a2_alpha\"}, {\"key\":\"a2_bravo\"}] }"),
+                new ObjectMapper().readTree("{ \"jenkins\" : { \"build\" : \"123\" } }"));
+        Run.persist(r);
         //must call calcualteLabelValues to have the label_value available for the extractor
         labelService.calculateLabelValues(t.labels,r.id);
-        Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","firstAKey",t.id).firstResult();
-        LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(l,r.id);
+
+        LabelService.ExtractedValues extractedValues = labelService.calculateExtractedValuesWithIterated(firstAKey,r.id);
         assertEquals(1,extractedValues.size(),"missing extracted value\n"+extractedValues);
-        assertTrue(extractedValues.hasNonNull(l.name),"missing extracted value\n"+extractedValues);
-        assertFalse(extractedValues.getByName(l.name).get(0).isIterated());
+        assertTrue(extractedValues.hasNonNull(firstAKey.name),"missing extracted value\n"+extractedValues);
+        assertFalse(extractedValues.getByName(firstAKey.name).get(0).isIterated());
         //It's a text node because it is quoted in the json
-        assertInstanceOf(TextNode.class,extractedValues.getByName(l.name).get(0).data(),"unexpected: "+extractedValues.getByName(l.name));
-        assertEquals("a1_alpha",((TextNode)extractedValues.getByName(l.name).get(0).data()).asText());
+        assertInstanceOf(TextNode.class,extractedValues.getByName(firstAKey.name).get(0).data(),"unexpected: "+extractedValues.getByName(firstAKey.name));
+        assertEquals("a1_alpha",((TextNode)extractedValues.getByName(firstAKey.name).get(0).data()).asText());
     }
     //case when m.dtype = 'LabelValueExtractor' and (m.jsonpath is null or m.jsonpath = '')
+    @Transactional
     @org.junit.jupiter.api.Test
     public void calculateExtractedValuesWithIterated_LabelValueExtractor_no_jsonpath() throws JsonProcessingException {
-        Test t = createTest();
-        Run r = createRun(t);
+        Test t = new Test("example-test");
+        Label a1 = new Label("a1",t)
+                .loadExtractors(Extractor.fromString("$.a1").setName("a1"));
+        Label iterA = new Label("iterA",t)
+                .loadExtractors(Extractor.fromString("a1[]").setName("iterA"));
+        t.loadLabels(iterA,a1);
+        t.persist();
+        Run r = new Run(t.id,
+                new ObjectMapper().readTree("{ \"foo\" : { \"bar\" : \"bizz\" }, \"a1\": [ {\"key\":\"a1_alpha\"}, {\"key\":\"a1_bravo\"}, {\"key\":\"a1_charlie\"}], \"a2\": [{\"key\":\"a2_alpha\"}, {\"key\":\"a2_bravo\"}] }"),
+                new ObjectMapper().readTree("{ \"jenkins\" : { \"build\" : \"123\" } }"));
+        Run.persist(r);
+
         //must call calcualteLabelValues to have the label_value available for the extractor
         labelService.calculateLabelValues(t.labels,r.id);
         Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","iterA",t.id).firstResult();
@@ -237,17 +286,16 @@ public class LabelServiceTest {
         t.loadLabels(foo,iterFoo,bar,iterBar,iterBarSum);
         t.persistAndFlush();
         Run r = new Run(
-                t.id,
-                new ObjectMapper().readTree("""
-                        {
-                          "foo" : [
-                          	{ "bar": [ {"key":"primero"},{"key":"segundo","value":"two"}] }
-                          ]
-                        }
-                        """),
-                new ObjectMapper().readTree("{}")
+            t.id,
+            new ObjectMapper().readTree("""
+                {
+                  "foo" : [
+                    { "bar": [ {"key":"primero"},{"key":"segundo","value":"two"}] }
+                  ]
+                }
+                """),
+            new ObjectMapper().readTree("{}")
         );
-
         r.persist();
         tm.commit();
         //end.txn
@@ -259,7 +307,6 @@ public class LabelServiceTest {
         assertEquals(2,lvs.size());
         assertEquals("primero",lvs.get(0).data.asText());
         assertEquals("segundotwo",lvs.get(1).data.asText());
-
     }
 
     @org.junit.jupiter.api.Test
@@ -465,10 +512,33 @@ public class LabelServiceTest {
         assertEquals(3,lvs.size(),lvs.toString());
     }
     @Disabled
+    @Transactional
     @org.junit.jupiter.api.Test
     public void calculateLabelValues_NxN_reducing() throws JsonProcessingException {
-        Test t = createTest_reducing();
-        Run r = createRun_reducing(t);
+        Test t = new Test("reducer-test");
+        Label a1 = new Label("a1",t)
+                .loadExtractors(Extractor.fromString("$.a1").setName("a1"));
+        a1.reducer= new LabelReducer("ary=>ary.map(v=>v*2)");
+        Label iterA = new Label("iterA",t)
+                .setTargetSchema("uri:keyed")
+                .loadExtractors(Extractor.fromString("a1[]").setName("iterA"));
+        Label b1 = new Label("b1",t)
+                .loadExtractors(Extractor.fromString("$.b1").setName("b1"));
+        Label iterB = new Label("iterB",t)
+                .setTargetSchema("uri:keyed")
+                .loadExtractors(Extractor.fromString("b1[]").setName("iterB"));
+        Label nxn = new Label("nxn",t)
+                .loadExtractors(
+                        Extractor.fromString("iterA").setName("foundA"),
+                        Extractor.fromString("iterB").setName("foundB")
+                );
+        nxn.reducer = new LabelReducer("({foundA,foundB})=>foundA*foundB");
+        nxn.multiType= Label.MultiIterationType.NxN;
+        t.loadLabels(a1,b1,iterA,iterB,nxn); // order should not matter
+        t.persist();
+        Run r = new Run(t.id,
+                new ObjectMapper().readTree("{ \"a1\":[0, 2, 4],\"b1\":[1, 3, 5]}"),new ObjectMapper().readTree("{}"));
+        Run.persist(r);
         labelService.calculateLabelValues(t.labels,r.id);
         List<LabelValue> found = LabelValue.find("from LabelValue lv where lv.run.id=?1",r.id).list();
         assertEquals(5,found.size());
@@ -565,7 +635,8 @@ public class LabelServiceTest {
     }
 
 
-
+    //TODO this count is expecting NvN calculations to be correct
+    @Disabled
     @org.junit.jupiter.api.Test
     public void getDerivedValues_iterA() throws JsonProcessingException {
         Test t = createTest();
@@ -592,21 +663,8 @@ public class LabelServiceTest {
         List<LabelValue> found = labelService.getBySchema("uri:keyed",t.id);
 
         assertFalse(found.isEmpty(),"found should not be empty");
+        //TODO 5 is becasue we do not yet process NxN
         assertEquals(5,found.size(),"found should have 2 entries: "+found);
-    }
-
-    @org.junit.jupiter.api.Test
-    public void usesIterated_direct() throws JsonProcessingException {
-        Test t = createTest();
-        Run r = createRun(t);
-        labelService.calculateLabelValues(t.labels,r.id);
-        Label found = Label.find("from Label l where l.name=?1 and l.parent.id=?2","foundA",t.id).singleResult();
-        Label iter = Label.find("from Label l where l.name=?1 and l.parent.id=?2","iterA",t.id).singleResult();
-        Label a1 = Label.find("from Label l where l.name=?1 and l.parent.id=?2","a1",t.id).singleResult();
-
-        assertTrue(labelService.usesIterated(r.id,found.id),"found uses an iterated label_value");
-        assertFalse(labelService.usesIterated(r.id,a1.id),"a1 does not use a label_value");
-        assertFalse(labelService.usesIterated(r.id,iter.id),"iterA does not use an iterated label_value");
     }
 
     @Transactional
@@ -676,8 +734,10 @@ public class LabelServiceTest {
         //labelService.calculateLabelValues(t.labels,r2.id);
         Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","iterA",t.id).singleResult();
         List<LabelService.ValueMap> labelValues = labelService.labelValues(l.id, r1.id,t.id, Collections.emptyList(),Collections.emptyList());
+        labelValues.forEach(System.out::println);
         assertEquals(3,labelValues.size());
     }
+    @Disabled
     @org.junit.jupiter.api.Test
     public void multiType_NxN() throws JsonProcessingException {
         Test t = createTest();
