@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
 import io.hyperfoil.tools.exp.horreum.valid.ValidTarget;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
+import jakarta.inject.Inject;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -19,7 +20,8 @@ import java.util.stream.Collectors;
                 @UniqueConstraint(columnNames = {"name","parent_id"})
         },
         indexes = {
-                @Index(name = "label_targetschema", columnList = "target_schema", unique = false)
+                @Index(name = "label_targetschema", columnList = "target_schema", unique = false),
+                @Index(name = "label_parent", columnList = "parent_id", unique = false)
         }
 )
 @JsonInclude(JsonInclude.Include.NON_NULL)

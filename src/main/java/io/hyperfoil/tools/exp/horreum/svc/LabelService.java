@@ -36,7 +36,6 @@ public class LabelService {
     @Transactional
     public void calculateLabelValue(Label l, Long runId){
         ExtractedValues extractedValues = calculateExtractedValuesWithIterated(l,runId);
-        System.out.println(extractedValues);
         Run r = Run.findById(runId);
         if(l.extractors.size()==1){
             //we do not have to deal with multitype if there is only one extractor
@@ -59,7 +58,6 @@ public class LabelService {
                             if(ev.sourceValueId() > 0) {
 
                                 LabelValue referenced = LabelValue.findById(ev.sourceValueId);
-                                System.out.println("create reference to "+ev.sourceValueId+" "+referenced);
                                 newValue.sources.add(referenced);
                             }else{
                                 //it doesn't have a source, this is ok

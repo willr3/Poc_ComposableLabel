@@ -23,7 +23,10 @@ public class LabelValue extends PanacheEntity {
 
     //@ElementCollection(fetch = FetchType.EAGER)
     @ManyToMany(cascade = { CascadeType.ALL }, fetch = FetchType.EAGER )
-    @JoinTable(name = "label_value_sources",uniqueConstraints = {})
+    @JoinTable(name = "label_value_sources",uniqueConstraints = {},indexes = {
+            @Index(name = "lvs_sources_id", columnList = "sources_id", unique = false),
+            @Index(name = "lvs_labelvalue_id", columnList = "labelvalue_id", unique = false),
+    })
     public Set<LabelValue> sources = new HashSet<>();//what label_values were used to create this label_value
 
     @ManyToOne
