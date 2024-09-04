@@ -115,6 +115,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                         .setReducer(new LabelReducer(
                         """
                                 value => {
+                                    console.log("Autobench Multi Core",value)
                                     if (value["workload"] != "autobench") {
                                         return null
                                     }
@@ -133,6 +134,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                         ).setReducer(new LabelReducer(
                         """
                                 value => {
+                                    console.log("Autobench Scaling",value)
                                     if (value["workload"] != "autobench") {
                                         return null
                                     }
@@ -151,6 +153,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                         ).setReducer(new LabelReducer(
                         """
                                 value => {
+                                    console.log("Autobench Single COre",Object.keys(value))
                                     if (value["workload"] != "autobench") {
                                         return null
                                     }

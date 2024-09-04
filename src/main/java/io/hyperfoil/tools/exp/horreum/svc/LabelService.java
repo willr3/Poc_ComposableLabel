@@ -118,8 +118,8 @@ public class LabelService {
                     switch (l.multiType){
                         case Length -> {
                             int maxLength = l.extractors.stream()
-                                    .filter(e -> Extractor.Type.VALUE.equals(e.type) && e.targetLabel.hasForEach() && map.containsKey(e.name) && map.get(e.name).data != null )
-                                    .map(e->map.get(e.name).data.size())
+                                    .filter(e -> Extractor.Type.VALUE.equals(e.type) && (e.targetLabel.hasForEach() || e.forEach) && map.containsKey(e.name) && map.get(e.name).data != null )
+                                    .map(e->map.get(e.name).data.isArray() ? map.get(e.name).data.size() : 1)
                                     .max(Integer::compareTo).orElse(1);
                             for(int i=0; i<maxLength; i++){
                                 ObjectNode objectNode = JsonNodeFactory.instance.objectNode();
@@ -130,7 +130,15 @@ public class LabelService {
                                 for(Extractor e : l.extractors){
                                     if(map.containsKey(e.name)){
                                         ExtractedValue v = map.get(e.name);
-                                        if( (e.forEach || v.isIterated) && v.data.size() > i){
+                                        //size = 0 for scalar objects so we need to account for them separately
+                                        if(!v.data().isArray()){
+                                            if(i == 0 ){
+                                                objectNode.set(e.name,v.data);
+                                            }else{
+
+                                            }
+
+                                        }else if( (e.forEach || v.isIterated) && v.data.size() > i){
                                             objectNode.set(e.name,v.data.get(i));
 
                                         }else if (!e.forEach && (Label.ScalarVariableMethod.All.equals(l.scalarMethod) || i == 0) ){
@@ -176,7 +184,7 @@ public class LabelService {
 
     public static class ExtractedValues {
         private final Map<String,Long> extractorLabelSources = new HashMap<>();
-        private final Map<String,Set<Integer>> extractorOrdinals = new HashMap<>();
+        private final Map<String,Map<Long,Set<Integer>>> extractorOrdinals = new HashMap<>();
         private final Map<String,List<ExtractedValue>> byName = new HashMap<>();
 
         public void add(String name,long valueId,long labelId, boolean iterated,int ordinal, JsonNode data){
@@ -187,10 +195,13 @@ public class LabelService {
                 byName.put(name,new ArrayList<>());
             }
             if(!extractorOrdinals.containsKey(name)){
-                extractorOrdinals.put(name,new HashSet<>());
+                extractorOrdinals.put(name,new HashMap<>());
             }
-            if (!extractorOrdinals.get(name).contains(ordinal)) {
-                extractorOrdinals.get(name).add(ordinal);
+            if(!extractorOrdinals.get(name).containsKey(valueId)){
+                extractorOrdinals.get(name).put(valueId,new HashSet<>());
+            }
+            if (!extractorOrdinals.get(name).get(valueId).contains(ordinal)) {
+                extractorOrdinals.get(name).get(valueId).add(ordinal);
                 ExtractedValue v = new ExtractedValue(valueId,labelId,iterated,ordinal,data);
                 extractorLabelSources.put(name,labelId);
                 byName.get(name).add(v);
@@ -262,7 +273,7 @@ public class LabelService {
         }
 
         public List<ExtractedValue> getByName(String name){
-            return byName.get(name);
+            return byName.getOrDefault(name,Collections.emptyList());
         }
         public boolean sameSource(String name,String otherName){
             return Objects.equals(extractorLabelSources.getOrDefault(name, -1L), extractorLabelSources.getOrDefault(otherName, 1L));
@@ -365,35 +376,73 @@ public class LabelService {
                 include.removeAll(exclude);
             }
             if(!include.isEmpty()) {
-                labelNameFilter = " AND l.name in :include";
+                labelNameFilter = " WHERE l.name in :include";
             }
         }
         //includeExcludeSql is empty if include did not contain entries after exclude removal
         if(labelNameFilter.isEmpty() && exclude!=null && !exclude.isEmpty()){
-            labelNameFilter=" AND l.name NOT in :exclude";
+            labelNameFilter=" WHERE l.name NOT in :exclude";
         }
 
         //noinspection rawtypes
         NativeQuery query = (NativeQuery) em.createNativeQuery(
         """
-        with bag as (
-            select
-                l.parent_id as test_id, lv.ordinal, lv.run_id, lt.id as target_label_id, lvt.id as target_value_id, lvs.sources_id, l.name,
-                jsonb_agg(lv.data) as data
-            from label_values lv
-                right join label_value_sources lvs on lvs.labelvalue_id = lv.id
-                left join label l on l.id = lv.label_id
-                left join label_values lvt on lvs.sources_id = lvt.id
-                left join label lt on lt.id = lvt.label_id
-            where lt.target_schema = :schema and l.parent_id = :testId
-            LABEL_NAME_FILTER
-            group by l.parent_id, lv.run_id, lt.id, lvs.sources_id, l.name, lvt.id, lv.ordinal
-        )
-        select
-            ordinal, target_label_id, target_value_id, run_id, test_id,
-            jsonb_object_agg(name,(case when jsonb_array_length(data) > 1 then data else data->0 end)) as data
-        from bag
-        group by test_id,run_id,target_label_id,target_value_id,ordinal;
+                with recursive bag(run_id,value_id,source_id,name,data,parent_id) as
+                (
+                    select
+                        lv.run_id as run_id,
+                        lvs.labelvalue_id as value_id,
+                        lvs.sources_id as source_id,
+                        l.name as name,
+                        lv.data as data,
+                        lvs.sources_id as parent_id
+                    from
+                        label_value_sources lvs
+                        left join label_values lv on lvs.labelvalue_id = lv.id
+                        left join label l on lv.label_id = l.id
+                    where
+                        lvs.sources_id in (select lv.id from label_values lv left join label l on l.id = lv.label_id where l.target_schema = :schema and l.parent_id = :testId)
+                    union all
+                    select
+                        bag.run_id as run_id,
+                        lvs.labelvalue_id as value_id,
+                        lvs.sources_id as source_id,
+                        l.name as name,
+                        lv.data as data,
+                        bag.parent_id as parent_id
+                    from
+                        label_value_sources lvs
+                        left join label_values lv on lvs.labelvalue_id = lv.id
+                        left join label l on lv.label_id = l.id
+                        join bag on lvs.sources_id = bag.value_id
+                ),
+                grouped as
+                (
+                    select
+                        run_id,
+                        parent_id,
+                        source_id,
+                        name,
+                        jsonb_agg(data) as data
+                    from
+                        bag
+                    group by run_id,parent_id,source_id,name order by parent_id,source_id
+                    LABEL_NAME_FILTER
+                ),
+                stack as
+                (
+                    select
+                        run_id,
+                        parent_id,
+                        name,
+                        jsonb_agg((case when jsonb_array_length(data) > 1 then data else data->0 end)) as data
+                    from grouped group by run_id,parent_id,name
+                )
+                select
+                    run_id,
+                    parent_id,
+                    jsonb_object_agg(name,(case when jsonb_array_length(data) > 1 then data else data->0 end)) as data
+                    from stack group by run_id,parent_id
         """.replace("LABEL_NAME_FILTER",labelNameFilter)
         ).setParameter("schema",schema)
         .setParameter("testId",testId);
@@ -410,23 +459,20 @@ public class LabelService {
         //noinspection unchecked
         List<Object[]> found = query
             .unwrap(NativeQuery.class)
-            .addScalar("ordinal",Long.class)
-            .addScalar("target_label_id",Long.class)
             .addScalar("run_id",Long.class)
-            .addScalar("test_id",Long.class)
+            .addScalar("parent_id",Long.class)
             .addScalar("data",JsonBinaryType.INSTANCE)
             .list();
 
         for(Object[] object : found){
             // tuple (labelId,index) should uniquely identify which label_value entry "owns" the ValueMap for the given test and run
             // note a label_value can have multiple values that are associated with a (labelId,index) if it is NxN
-            Long index = (Long)object[0];
-            Long labelId = (Long)object[1];
-            Long runId = (Long)object[2];
+            Long runId = (Long)object[0];
+            Long index = (Long)object[1];
             //object[3] is testId
-            ObjectNode data = (ObjectNode)object[4];
+            ObjectNode data = (ObjectNode)object[2];
 
-            ValueMap vm = new ValueMap(data,index,labelId,runId,testId);
+            ValueMap vm = new ValueMap(data,index,index,runId,testId);
             rtrn.add(vm);
         }
         return rtrn;
@@ -630,13 +676,10 @@ public class LabelService {
                     r.data as run_data, r.metadata as run_metadata
                 from
                     extractor e full join label_values lv on e.target_id = lv.label_id,
-                    
                     run r where e.parent_id = :label_id and (lv.run_id = :run_id or lv.run_id is null) and r.id = :run_id),
             n as (select m.name, m.type, m.jsonpath, m.foreach, m.value_id, m.label_id, m.ordinal, (case
                 when m.type = 'PATH' and m.jsonpath is not null then jsonb_path_query_array(m.run_data,m.jsonpath::jsonpath)
                 when m.type = 'METADATA' and m.jsonpath is not null and m.column_name = 'metadata' then jsonb_path_query_array(m.run_metadata,m.jsonpath::jsonpath)
-                when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' and m.foreach then extract_path_array(m.lv_data,m.jsonpath::jsonpath)
-                
                 when m.type = 'VALUE' and m.jsonpath is not null and m.jsonpath != '' then jsonb_path_query_array(m.lv_data,m.jsonpath::jsonpath)
                 when m.type = 'VALUE' and (m.jsonpath is null or m.jsonpath = '') then to_jsonb(ARRAY[m.lv_data])
                 else '[]'::jsonb end) as found from m)
@@ -652,8 +695,6 @@ public class LabelService {
                 .addScalar("data", JsonBinaryType.INSTANCE)
                 .addScalar("lv_iterated",Boolean.class)
                 .getResultList();
-
-
         if(found.isEmpty()){
             //TODO alert error or assume the data missed all the labels?
         }else {

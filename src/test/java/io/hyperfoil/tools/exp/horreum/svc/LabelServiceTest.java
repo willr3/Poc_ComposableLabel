@@ -265,6 +265,70 @@ public class LabelServiceTest {
     }
 
     @org.junit.jupiter.api.Test
+    public void createLabelValues_nested() throws HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, JsonProcessingException, NotSupportedException {
+        tm.begin();
+        Test t = new Test("nested");
+        Label foo = new Label("fo",t)
+                .loadExtractors(Extractor.fromString("$.foo").setName("fo"));
+        Label iterFoo = new Label("foo",t)
+                .loadExtractors(Extractor.fromString("fo[]").setName("foo"))
+                .setTargetSchema("foos");
+        Label bar = new Label("bar",t)
+                .loadExtractors(Extractor.fromString("foo[]:$.bar").setName("bar"));
+        Label biz = new Label("biz",t)
+                .loadExtractors(Extractor.fromString("bar[]:$.biz").setName("biz"));
+        Label sum = new Label("sum",t)
+                .loadExtractors(
+                        Extractor.fromString("biz[]:$.a").setName("a"),
+                        Extractor.fromString("biz[]:$.b").setName("b")
+                ).setReducer("({a,b})=>(a||'')+(b||'')");
+        t.loadLabels(foo,iterFoo,bar,biz,sum);
+        t.persistAndFlush();
+        Run r = new Run(
+                t.id,
+                new ObjectMapper().readTree("""
+                {
+                    "foo": [
+                      {
+                        "bar": [
+                          {
+                            "biz": [
+                              { "a": "a00", "b": "b00"},
+                              { "a": "a01"},
+                              { "a": "a02", "b": "b02"}
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "bar": [
+                          {
+                            "biz": [
+                              { "a": "a10", "b": "b10"},
+                              { "b": "b11"},
+                              { "a": "a12", "b": "b12"}
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                }
+                """),
+                new ObjectMapper().readTree("{}")
+        );
+        r.persist();
+        tm.commit();
+        labelService.calculateLabelValues(t.labels,r.id);
+
+        List<LabelValue> lvs = LabelValue.find("from LabelValue lv where lv.run.id=?1 and lv.label.id=?2",r.id,sum.id).list();
+
+        assertEquals(6,lvs.size(),"expect 6 values for sum: "+lvs);
+        Arrays.asList("a00b00","a01","a02b02","a10b10","b11","a12b12").forEach(v->{
+            assertTrue(lvs.stream().anyMatch(lv->lv.data.isTextual() && v.equals(lv.data.asText())),"could not find "+v+" in "+lvs);
+        });
+    }
+
+    @org.junit.jupiter.api.Test
     public void createLabelValues_doubleIter() throws JsonProcessingException, HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
         //start.txn
         tm.begin();
@@ -560,7 +624,6 @@ public class LabelServiceTest {
         Run r2 = createRun(t2,"1");
         labelService.calculateLabelValues(t2.labels,r2.id);
         List<LabelService.ValueMap> t2valueMaps = labelService.labelValues("uri:keyed",t2.id,Collections.emptyList(),Collections.emptyList());
-        t2valueMaps.forEach(System.out::println);
         int LIMIT = 5000;
         long length = Math.round(Math.ceil(Math.log10(LIMIT)));
         for(int i=0; i< LIMIT; i++){
@@ -649,7 +712,6 @@ public class LabelServiceTest {
         Label foundA = Label.find("from Label l where l.name=?1 and l.parent.id=?2","foundA",t.id).singleResult();
         List<LabelValue> labelValues = LabelValue.find("from LabelValue lv where lv.label.id=?1 and lv.run.id=?2",iterA.id,r1.id).list();
         List<LabelValue> found = labelService.getDerivedValues(labelValues.get(0),0);
-        found.forEach(System.out::println);
         assertFalse(found.isEmpty(),"found should not be empty");
         assertEquals(7,found.size());
         assertTrue(found.stream().anyMatch(lv->lv.label.equals(nxn)));
@@ -734,7 +796,6 @@ public class LabelServiceTest {
         //labelService.calculateLabelValues(t.labels,r2.id);
         Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","iterA",t.id).singleResult();
         List<LabelService.ValueMap> labelValues = labelService.labelValues(l.id, r1.id,t.id, Collections.emptyList(),Collections.emptyList());
-        labelValues.forEach(System.out::println);
         assertEquals(3,labelValues.size());
     }
     @Disabled
