@@ -42,10 +42,15 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
     @Transactional
     public Test createRhivos(){
         Test t = new Test("rhivos-perf-comprehensive");
-        String transformName = "transform";
-        String transformPrefix = transformName+Extractor.FOR_EACH_SUFFIX+Extractor.NAME_SEPARATOR;//transform[]:
+        String transformName = "transformIter";
+        String transformPrefix = transformName+Extractor.NAME_SEPARATOR;//transform[]:
         t.loadLabels(
                 new Label(transformName,t)
+                        .loadExtractors(
+                                Extractor.fromString("transform"+Extractor.FOR_EACH_SUFFIX)
+                        )
+                        .setTargetSchema("urn:rhivos-perf-comprehensive-datasets:01"),
+                new Label("transform",t)
                         .loadExtractors(
                                 Extractor.fromString("$.user").setName("user"),
                                 Extractor.fromString("$.uuid").setName("uuid"),
@@ -66,7 +71,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                                 Extractor.fromString("$.coremark_pro_workload[*].results").setName("coremark_pro_results"),
                                 Extractor.fromString("$.autobench_workload[*].results").setName("autobench_results")
                         )
-                        .setTargetSchema("urn:rhivos-perf-comprehensive-datasets:01")
+
                         .setReducer(new LabelReducer(
                         """
                                 ({
@@ -115,7 +120,6 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                         .setReducer(new LabelReducer(
                         """
                                 value => {
-                                    console.log("Autobench Multi Core",value)
                                     if (value["workload"] != "autobench") {
                                         return null
                                     }
@@ -134,7 +138,6 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                         ).setReducer(new LabelReducer(
                         """
                                 value => {
-                                    console.log("Autobench Scaling",value)
                                     if (value["workload"] != "autobench") {
                                         return null
                                     }
@@ -153,7 +156,6 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                         ).setReducer(new LabelReducer(
                         """
                                 value => {
-                                    console.log("Autobench Single COre",Object.keys(value))
                                     if (value["workload"] != "autobench") {
                                         return null
                                     }
