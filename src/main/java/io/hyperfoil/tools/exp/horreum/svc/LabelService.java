@@ -383,69 +383,62 @@ public class LabelService {
         if(labelNameFilter.isEmpty() && exclude!=null && !exclude.isEmpty()){
             labelNameFilter=" WHERE l.name NOT in :exclude";
         }
-
-        //noinspection rawtypes
         NativeQuery query = (NativeQuery) em.createNativeQuery(
-        """
-                with recursive bag(run_id,value_id,source_id,name,data,parent_id) as
-                (
-                    select
-                        lv.run_id as run_id,
-                        lvs.labelvalue_id as value_id,
-                        lvs.sources_id as source_id,
-                        l.name as name,
-                        lv.data as data,
-                        lvs.sources_id as parent_id
-                    from
-                        label_value_sources lvs
-                        left join label_values lv on lvs.labelvalue_id = lv.id
-                        left join label l on lv.label_id = l.id
-                    where
-                        lvs.sources_id in (select lv.id from label_values lv left join label l on l.id = lv.label_id where l.target_schema = :schema and l.parent_id = :testId)
-                    union all
-                    select
-                        bag.run_id as run_id,
-                        lvs.labelvalue_id as value_id,
-                        lvs.sources_id as source_id,
-                        l.name as name,
-                        lv.data as data,
-                        bag.parent_id as parent_id
-                    from
-                        label_value_sources lvs
-                        left join label_values lv on lvs.labelvalue_id = lv.id
-                        left join label l on lv.label_id = l.id
-                        join bag on lvs.sources_id = bag.value_id
-                ),
-                grouped as
-                (
-                    select
-                        run_id,
-                        parent_id,
-                        source_id,
-                        name,
-                        jsonb_agg(data) as data
-                    from
-                        bag
-                    group by run_id,parent_id,source_id,name order by parent_id,source_id
-                    LABEL_NAME_FILTER
-                ),
-                stack as
-                (
-                    select
-                        run_id,
-                        parent_id,
-                        name,
-                        jsonb_agg((case when jsonb_array_length(data) > 1 then data else data->0 end)) as data
-                    from grouped group by run_id,parent_id,name
-                )
-                select
-                    run_id,
-                    parent_id,
-                    jsonb_object_agg(name,(case when jsonb_array_length(data) > 1 then data else data->0 end)) as data
-                    from stack group by run_id,parent_id
-        """.replace("LABEL_NAME_FILTER",labelNameFilter)
-        ).setParameter("schema",schema)
-        .setParameter("testId",testId);
+                        """
+                        with recursive bag(run_id,value_id,source_id,name,data,parent_id) as
+                        (
+                            select
+                                lv.run_id as run_id,
+                                lvs.labelvalue_id as value_id,
+                                lvs.sources_id as source_id,
+                                l.name as name,
+                                lv.data as data,
+                                lvs.sources_id as parent_id
+                            from
+                                label_value_sources lvs
+                                left join label_values lv on lvs.labelvalue_id = lv.id
+                                left join label l on lv.label_id = l.id
+                            where
+                                lvs.sources_id in (select lv.id from label_values lv left join label l on l.id = lv.label_id where l.target_schema = :schema and l.parent_id = :testId)
+                            union all
+                            select
+                                bag.run_id as run_id,
+                                lvs.labelvalue_id as value_id,
+                                lvs.sources_id as source_id,
+                                l.name as name,
+                                lv.data as data,
+                                bag.parent_id as parent_id
+                            from
+                                label_value_sources lvs
+                                left join label_values lv on lvs.labelvalue_id = lv.id
+                                left join label l on lv.label_id = l.id
+                                join bag on lvs.sources_id = bag.value_id
+                        ),
+                        grouped as
+                        (
+                            select
+                                run_id,
+                                parent_id,
+                                source_id,
+                                name,
+                                jsonb_agg(data) as data
+                            from
+                                bag
+                            group by run_id,parent_id,source_id,name order by parent_id,source_id
+                            LABEL_NAME_FILTER
+                        ),
+                        stack as
+                        (
+                            select
+                                run_id,
+                                parent_id,
+                                name,
+                                jsonb_agg((case when jsonb_array_length(data) > 1 then data else data->0 end)) as data
+                            from grouped group by run_id,parent_id,name
+                        ) select run_id,parent_id,name,data from grouped
+                        """.replace("LABEL_NAME_FILTER",labelNameFilter)
+                ).setParameter("schema",schema)
+                .setParameter("testId",testId);
 
         if(!labelNameFilter.isEmpty()){
             if(labelNameFilter.contains("include")){
@@ -458,24 +451,37 @@ public class LabelService {
 
         //noinspection unchecked
         List<Object[]> found = query
-            .unwrap(NativeQuery.class)
-            .addScalar("run_id",Long.class)
-            .addScalar("parent_id",Long.class)
-            .addScalar("data",JsonBinaryType.INSTANCE)
-            .list();
+                .unwrap(NativeQuery.class)
+                .addScalar("run_id",Long.class)
+                .addScalar("parent_id",Long.class)
+                .addScalar("name",String.class)
+                .addScalar("data", JsonBinaryType.INSTANCE)
+                .list();
 
-        for(Object[] object : found){
-            // tuple (labelId,index) should uniquely identify which label_value entry "owns" the ValueMap for the given test and run
-            // note a label_value can have multiple values that are associated with a (labelId,index) if it is NxN
+        Map<Long, LabelService.ValueMap> maps = new HashMap<>();
+
+        for(Object[] object: found){
             Long runId = (Long)object[0];
-            Long index = (Long)object[1];
-            //object[3] is testId
-            ObjectNode data = (ObjectNode)object[2];
+            Long parentId = (Long)object[1];
+            String name = (String)object[2];
+            JsonNode data = (JsonNode)object[3];
 
-            ValueMap vm = new ValueMap(data,index,index,runId,testId);
-            rtrn.add(vm);
+            if(!maps.containsKey(parentId)){
+                LabelService.ValueMap entry = new LabelService.ValueMap(JsonNodeFactory.instance.objectNode(),parentId,parentId,runId,testId);
+                maps.put(parentId,entry);
+            }
+            LabelService.ValueMap entry = maps.get(parentId);
+            if(data.isArray()){
+                if(((ArrayNode)data).size()>1){
+                    entry.data().set(name,data);
+                }else{
+                    entry.data().set(name,((ArrayNode)data).get(0));
+                }
+            }else {
+                entry.data().set(name,data);
+            }
         }
-        return rtrn;
+        return maps.values().stream().sorted((a,b)->Long.compare(a.runId,b.runId)).toList();
     }
     //This is the labelValues endpoint that more closely matches what currently exists in Horreum if run = dataset
     //filter,before,after,sort,direction,limit,page, and multiFilter are not yet supported
