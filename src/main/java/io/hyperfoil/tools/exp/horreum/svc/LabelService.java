@@ -424,8 +424,8 @@ public class LabelService {
                                 jsonb_agg(data) as data
                             from
                                 bag
-                            group by run_id,parent_id,source_id,name order by parent_id,source_id
                             LABEL_NAME_FILTER
+                            group by run_id,parent_id,source_id,name order by parent_id,source_id
                         ),
                         stack as
                         (
