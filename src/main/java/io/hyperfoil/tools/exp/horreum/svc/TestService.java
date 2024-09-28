@@ -71,7 +71,6 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
                                 Extractor.fromString("$.coremark_pro_workload[*].results").setName("coremark_pro_results"),
                                 Extractor.fromString("$.autobench_workload[*].results").setName("autobench_results")
                         )
-
                         .setReducer(new LabelReducer(
                         """
                                 ({

@@ -132,7 +132,7 @@ public class LabelService {
                                         ExtractedValue v = map.get(e.name);
                                         //size = 0 for scalar objects so we need to account for them separately
                                         if(!v.data().isArray()){
-                                            if(i == 0 ){
+                                            if(i == 0 || l.scalarMethod.equals(Label.ScalarVariableMethod.All)){
                                                 objectNode.set(e.name,v.data);
                                             }else{
 
@@ -160,7 +160,63 @@ public class LabelService {
                         }
                         case NxN -> {
                             //TODO implement NxN for iterated labelValues
-                            System.err.println("NxN not yet implemented");
+                            //build the NxN combinations of label_value sources
+                            List<Map<String,Integer>> sources = new ArrayList<>();
+                            for(Extractor e : l.extractors){
+                                if(map.containsKey(e.name)){
+                                    ExtractedValue v = map.get(e.name);
+                                    //if the data is iterated or the extractor is iterating
+                                    if(v.isIterated || e.forEach){
+                                        List<Map<String,Integer>> newSources = new ArrayList<>();
+                                        for(int i= 0; i<v.data().size(); i++){
+                                            List<Map<String,Integer>> cloned = new ArrayList<>();
+                                            sources.forEach(s->cloned.add(new HashMap<>(s)));
+                                            for(Map<String,Integer> m : cloned){
+                                                m.put(e.name, i );
+                                            }
+                                            newSources.addAll(cloned);
+                                        }
+                                        sources = newSources;
+                                    }
+                                }
+                            }
+                            //at this point we have all the NxN combinations, time to calculate the label_values same as  above
+                            for(int idx = 0; idx < sources.size(); idx++){
+                                Map<String,Integer> sourcesMap = sources.get(idx);
+                                ObjectNode objectNode = JsonNodeFactory.instance.objectNode();
+                                LabelValue newValue = new LabelValue();
+                                newValue.ordinal=idx;
+                                newValue.label=l;
+                                newValue.run=r;
+                                for(Extractor e : l.extractors){
+                                    if(map.containsKey(e.name)){
+                                        ExtractedValue v = map.get(e.name);
+                                        //sourcesMap only contains the value if it was iterated or needs to iterate
+                                        if(sourcesMap.containsKey(e.name)){
+                                            objectNode.set(e.name,v.data.get(sourcesMap.get(e.name)));
+                                        }else {
+                                            if (l.scalarMethod.equals(Label.ScalarVariableMethod.All)) {
+                                                objectNode.set(e.name,v.data);
+                                            }else {
+                                                //sum == 0 if this is the first comparison for the label
+                                                int sum = sourcesMap.values().stream().mapToInt(k-> k).sum();
+                                                if(sum == 0 ){
+                                                    objectNode.set(e.name,v.data);
+                                                }
+                                            }
+                                        }
+                                        if(objectNode.has(e.name) && v.hasSourceValue()) {
+                                            newValue.addSource(LabelValue.findById(v.sourceValueId));
+                                        }
+                                    }
+                                }
+                                if(l.reducer!=null){
+                                    newValue.data = l.reducer.evalJavascript(objectNode);
+                                }else{
+                                    newValue.data = objectNode;
+                                }
+                                newValue.persistAndFlush();
+                            }
                         }
 
                     }
@@ -435,7 +491,7 @@ public class LabelService {
                                 name,
                                 jsonb_agg((case when jsonb_array_length(data) > 1 then data else data->0 end)) as data
                             from grouped group by run_id,parent_id,name
-                        ) select run_id,parent_id,name,data from grouped
+                        ) select run_id,parent_id,name,data from stack
                         """.replace("LABEL_NAME_FILTER",labelNameFilter)
                 ).setParameter("schema",schema)
                 .setParameter("testId",testId);

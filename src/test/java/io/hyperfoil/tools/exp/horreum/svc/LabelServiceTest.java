@@ -575,7 +575,7 @@ public class LabelServiceTest {
         assertNotNull(lvs,"label_value should exit");
         assertEquals(3,lvs.size(),lvs.toString());
     }
-    @Disabled
+    @Disabled //Not implemented in recursive_java yet
     @Transactional
     @org.junit.jupiter.api.Test
     public void calculateLabelValues_NxN_reducing() throws JsonProcessingException {
