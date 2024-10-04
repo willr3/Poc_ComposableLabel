@@ -37,7 +37,17 @@ public class LabelService {
     public void calculateLabelValue(Label l, Long runId){
         ExtractedValues extractedValues = calculateExtractedValuesWithIterated(l,runId);
         Run r = Run.findById(runId);
-        if(l.extractors.size()==1){
+        if(l.extractors.size()==0){
+            LabelValue newValue = new LabelValue();
+            newValue.label = l;
+            newValue.run=r;
+            newValue.data = r.data;
+            if(l.reducer!=null){
+                newValue.data = l.reducer.evalJavascript(newValue.data);
+            }
+            newValue.persist();
+
+        } else if(l.extractors.size()==1){
             //we do not have to deal with multitype if there is only one extractor
             List<ExtractedValue> evs = extractedValues.getByName(l.extractors.get(0).name);
             for(ExtractedValue ev : evs){
@@ -56,7 +66,6 @@ public class LabelService {
                             newValue.label = l;
                             newValue.run = r;
                             if(ev.sourceValueId() > 0) {
-
                                 LabelValue referenced = LabelValue.findById(ev.sourceValueId);
                                 newValue.sources.add(referenced);
                             }else{
@@ -87,36 +96,32 @@ public class LabelService {
                 }
             }
         } else {
-            //this is the challenging bit where we have to deal with NxN et.al.
-            List<Map<String,ExtractedValue>> todo = extractedValues.getLengthGrouped();
-            for(Map<String,ExtractedValue> map : todo){
-                //if any of them are iterated we have to
-
-                boolean haveIterated = map.values().stream().anyMatch(ev->ev.isIterated);
-                if(!haveIterated) {
-                    //create the object node
-                    ObjectNode objectNode = JsonNodeFactory.instance.objectNode();
-                    LabelValue newValue = new LabelValue();
-                    newValue.ordinal = 0;
-                    newValue.label = l;
-                    newValue.run = r;
-                    map.forEach((k, v) -> {
-                        objectNode.set(k, v.data);
-                        //TODO what if the sourceLabelId is invalid?
-                        if(v.hasSourceValue()) {
-                            newValue.addSource(LabelValue.findById(v.sourceValueId));
-                        }
-                    });
-                    if(l.reducer!=null){
-                        newValue.data = l.reducer.evalJavascript(objectNode);
-                    }else{
-                        newValue.data = objectNode;
-                    }
-                    newValue.persistAndFlush();
-                }else{
-                    //TODO this needs to calculate the all the combinations of iterated extracted values and use the scalar
-                    switch (l.multiType){
-                        case Length -> {
+            switch (l.multiType){
+                case Length -> {
+                    List<Map<String,ExtractedValue>> todo = extractedValues.getLengthGrouped();
+                    for(Map<String,ExtractedValue> map : todo){
+                        boolean haveIterated = map.values().stream().anyMatch(ev->ev.isIterated) || extractedValues.getNames().stream().anyMatch(name->extractedValues.getByName(name).size()>1);
+                        if(!haveIterated) {
+                            //create the object node
+                            ObjectNode objectNode = JsonNodeFactory.instance.objectNode();
+                            LabelValue newValue = new LabelValue();
+                            newValue.ordinal = 0;
+                            newValue.label = l;
+                            newValue.run = r;
+                            map.forEach((k, v) -> {
+                                objectNode.set(k, v.data);
+                                //TODO what if the sourceLabelId is invalid?
+                                if(v.hasSourceValue()) {
+                                    newValue.addSource(LabelValue.findById(v.sourceValueId));
+                                }
+                            });
+                            if(l.reducer!=null){
+                                newValue.data = l.reducer.evalJavascript(objectNode);
+                            }else{
+                                newValue.data = objectNode;
+                            }
+                            newValue.persistAndFlush();
+                        }else {
                             int maxLength = l.extractors.stream()
                                     .filter(e -> Extractor.Type.VALUE.equals(e.type) && (e.targetLabel.hasForEach() || e.forEach) && map.containsKey(e.name) && map.get(e.name).data != null )
                                     .map(e->map.get(e.name).data.isArray() ? map.get(e.name).data.size() : 1)
@@ -158,70 +163,77 @@ public class LabelService {
                                 newValue.persistAndFlush();
                             }
                         }
-                        case NxN -> {
-                            //TODO implement NxN for iterated labelValues
-                            //build the NxN combinations of label_value sources
-                            List<Map<String,Integer>> sources = new ArrayList<>();
-                            for(Extractor e : l.extractors){
-                                if(map.containsKey(e.name)){
-                                    ExtractedValue v = map.get(e.name);
-                                    //if the data is iterated or the extractor is iterating
-                                    if(v.isIterated || e.forEach){
-                                        List<Map<String,Integer>> newSources = new ArrayList<>();
-                                        for(int i= 0; i<v.data().size(); i++){
-                                            List<Map<String,Integer>> cloned = new ArrayList<>();
-                                            sources.forEach(s->cloned.add(new HashMap<>(s)));
-                                            for(Map<String,Integer> m : cloned){
-                                                m.put(e.name, i );
-                                            }
-                                            newSources.addAll(cloned);
-                                        }
-                                        sources = newSources;
-                                    }
-                                }
-                            }
-                            //at this point we have all the NxN combinations, time to calculate the label_values same as  above
-                            for(int idx = 0; idx < sources.size(); idx++){
-                                Map<String,Integer> sourcesMap = sources.get(idx);
-                                ObjectNode objectNode = JsonNodeFactory.instance.objectNode();
-                                LabelValue newValue = new LabelValue();
-                                newValue.ordinal=idx;
-                                newValue.label=l;
-                                newValue.run=r;
-                                for(Extractor e : l.extractors){
-                                    if(map.containsKey(e.name)){
-                                        ExtractedValue v = map.get(e.name);
-                                        //sourcesMap only contains the value if it was iterated or needs to iterate
-                                        if(sourcesMap.containsKey(e.name)){
-                                            objectNode.set(e.name,v.data.get(sourcesMap.get(e.name)));
-                                        }else {
-                                            if (l.scalarMethod.equals(Label.ScalarVariableMethod.All)) {
-                                                objectNode.set(e.name,v.data);
-                                            }else {
-                                                //sum == 0 if this is the first comparison for the label
-                                                int sum = sourcesMap.values().stream().mapToInt(k-> k).sum();
-                                                if(sum == 0 ){
-                                                    objectNode.set(e.name,v.data);
-                                                }
-                                            }
-                                        }
-                                        if(objectNode.has(e.name) && v.hasSourceValue()) {
-                                            newValue.addSource(LabelValue.findById(v.sourceValueId));
-                                        }
-                                    }
-                                }
-                                if(l.reducer!=null){
-                                    newValue.data = l.reducer.evalJavascript(objectNode);
-                                }else{
-                                    newValue.data = objectNode;
-                                }
-                                newValue.persistAndFlush();
-                            }
-                        }
-
                     }
                 }
-
+                case NxN -> {
+                    List<Map<String,Integer>> sources = new ArrayList<>();
+                    for(Extractor e : l.extractors){
+                        if(extractedValues.getNames().contains(e.name)){
+                            List<ExtractedValue> evs = extractedValues.getByName(e.name);
+                            //if the data is iterated or the extractor is iterating
+                            if(l.hasForEach() || evs.size() > 1){
+                                List<Map<String,Integer>> newSources = new ArrayList<>();
+                                for(int i=0; i<evs.size(); i++){
+                                    if(sources.isEmpty()){
+                                        HashMap<String,Integer> entry = new HashMap();
+                                        entry.put(e.name,i);
+                                        newSources.add(entry);
+                                    }else {
+                                        List<Map<String, Integer>> cloned = new ArrayList<>();
+                                        sources.forEach(s -> cloned.add(new HashMap<>(s)));
+                                        for (Map<String, Integer> m : cloned) {
+                                            m.put(e.name, i);
+                                        }
+                                        newSources.addAll(cloned);
+                                    }
+                                }
+                                sources = newSources;
+                            }
+                        }
+                    }
+                    //at this point we have all the NxN combinations, time to calculate the label_values same as  above
+                    for(int idx = 0; idx < sources.size(); idx++){
+                        Map<String,Integer> sourcesMap = sources.get(idx);
+                        ObjectNode objectNode = JsonNodeFactory.instance.objectNode();
+                        LabelValue newValue = new LabelValue();
+                        newValue.ordinal=idx;
+                        newValue.label=l;
+                        newValue.run=r;
+                        for(Extractor e : l.extractors){
+                            if(extractedValues.getNames().contains(e.name)){
+                                List<ExtractedValue> evs = extractedValues.getByName(e.name);
+                                //sourcesMap only contains the value if it was iterated or needs to iterate
+                                if(sourcesMap.containsKey(e.name)){
+                                    objectNode.set(e.name,evs.get(sourcesMap.get(e.name)).data);
+                                }else {
+                                    if(evs.size() > 1){
+                                        //THIS IS A FLAW IN THE LOGIC, WE SHOULD FIX THE CODE
+                                        System.err.println("yeah.... I'm going to need you to fix this");
+                                    }
+                                    if (l.scalarMethod.equals(Label.ScalarVariableMethod.All)) {
+                                        objectNode.set(e.name,evs.get(0).data());
+                                    }else {
+                                        //sum == 0 if this is the first comparison for the label
+                                        int sum = sourcesMap.values().stream().mapToInt(k-> k).sum();
+                                        if(sum == 0 ){
+                                            objectNode.set(e.name,evs.get(0).data());
+                                        }
+                                    }
+                                }
+                                if(objectNode.has(e.name) && evs.get(sourcesMap.get(e.name)).hasSourceValue()) {
+                                    LabelValue referenced = LabelValue.findById(evs.get(sourcesMap.get(e.name)).sourceValueId);
+                                    newValue.addSource(referenced);
+                                }
+                            }
+                        }
+                        if(l.reducer!=null){
+                            newValue.data = l.reducer.evalJavascript(objectNode);
+                        }else{
+                            newValue.data = objectNode;
+                        }
+                        newValue.persistAndFlush();
+                    }
+                }
             }
         }
     }
@@ -359,7 +371,7 @@ public class LabelService {
             for(String name : getNames()){
                 sb.append("name="+name+" "+ getByName(name).size()+"\n");
                 for( ExtractedValue v : getByName(name)){
-                    sb.append("  source="+v.sourceValueId+" labelId="+v.souceLabelId+" iter="+v.isIterated+" data="+v.data+"\n");
+                    sb.append("  source="+v+"\n");
                 }
             }
             return sb.toString();
@@ -432,7 +444,7 @@ public class LabelService {
                 include.removeAll(exclude);
             }
             if(!include.isEmpty()) {
-                labelNameFilter = " WHERE l.name in :include";
+                labelNameFilter = " WHERE bag.name in :include";
             }
         }
         //includeExcludeSql is empty if include did not contain entries after exclude removal
@@ -624,6 +636,7 @@ public class LabelService {
         return labelValues(labelId,runId,testId,Collections.emptyList(),Collections.emptyList());
     }
     //testId is only needed to create the ValueMap because labels are currently scoped to a test
+    //this needs to recurse the same as labelValues(String schema
     public List<ValueMap> labelValues(long labelId, long runId, long testId, List<String> include, List<String> exclude){
         List<ValueMap> rtrn = new ArrayList<>();
         String labelNameFilter = "";
@@ -694,7 +707,8 @@ public class LabelService {
         return LabelValue.find("from LabelValue lv where lv.run.id=?1 and lv.label.id=?2",runId,labelId).firstResult();
     }
 
-    private void debug(String sql,Object...args){
+    private String debug(String sql,Object...args){
+        StringBuilder sb = new StringBuilder();
         List<Object> found;
         NativeQuery q = Label.getEntityManager().createNativeQuery(sql).unwrap(NativeQuery.class);
         for(int i=0; i<args.length; i++){
@@ -707,18 +721,20 @@ public class LabelService {
                     //
                 }else{
                     if(row instanceof Object[]){
-                        System.out.printf("%s%n",Arrays.asList((Object[])row).toString());
+                        sb.append(String.format("%s%n",Arrays.asList((Object[])row).toString()));
                     }else {
-                        System.out.printf("%s%n",row.toString());
+                        sb.append(String.format("%s%n",row.toString()));
                     }
                 }
             });
         }
+        return sb.toString();
     }
 
     /*
         LabelValueExtractor on an iterated label_value will need to run N separate times because it will be forced to be an iterated value
      */
+    //incorrectly reporting that the value of an iterated extractor is not iterated, I think iterated needs to be a logicl or of forEach and lv.isIterated
     public ExtractedValues calculateExtractedValuesWithIterated(Label l, long runId){
         ExtractedValues rtrn = new ExtractedValues();
 

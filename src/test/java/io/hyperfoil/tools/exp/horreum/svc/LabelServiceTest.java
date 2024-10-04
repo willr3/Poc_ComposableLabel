@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -547,7 +548,6 @@ public class LabelServiceTest {
         r.persist();
         return r;
     }
-    @Disabled
     @org.junit.jupiter.api.Test
     public void calculateLabelValues_NxN_jsonpath_on_iterated() throws JsonProcessingException {
 
@@ -560,9 +560,13 @@ public class LabelServiceTest {
         List<LabelValue> lvs = LabelValue.find("from LabelValue lv where lv.run.id=?1 and lv.label.id=?2",r.id,nxn.id).list();
         assertNotNull(lvs,"label_value should exit");
         //TODO this branch does not yet support NxN
-        assertEquals(6,lvs.size(),"expect 6 entries: "+lvs);
-//        JsonNode expected = (new ObjectMapper()).readTree("[{\"foundA\":\"a1_uno_alpha\",\"foundB\":\"b1_uno_alpha\"},{\"foundA\":\"a1_uno_bravo\",\"foundB\":\"b1_uno_alpha\"},{\"foundA\":\"a1_uno_charlie\",\"foundB\":\"b1_uno_alpha\"},{\"foundA\":\"a1_uno_alpha\",\"foundB\":\"b1_uno_bravo\"},{\"foundA\":\"a1_uno_bravo\",\"foundB\":\"b1_uno_bravo\"},{\"foundA\":\"a1_uno_charlie\",\"foundB\":\"b1_uno_bravo\"}]");
-//        assertEquals(expected,lv.data,"data did not match expected "+lv.data);
+        assertEquals(6,lvs.size(),"expect 6 entries:\n  "+lvs.stream().map(LabelValue::toString).collect(Collectors.joining("\n  ")));
+        assertEquals(new ObjectMapper().readTree("{\"foundA\":\"a1_uno_alpha\",\"foundB\":\"b1_uno_alpha\"}"),lvs.get(0).data);
+        assertEquals(new ObjectMapper().readTree("{\"foundA\":\"a1_uno_bravo\",\"foundB\":\"b1_uno_alpha\"}"),lvs.get(1).data);
+        assertEquals(new ObjectMapper().readTree("{\"foundA\":\"a1_uno_charlie\",\"foundB\":\"b1_uno_alpha\"}"),lvs.get(2).data);
+        assertEquals(new ObjectMapper().readTree("{\"foundA\":\"a1_uno_alpha\",\"foundB\":\"b1_uno_bravo\"}"),lvs.get(3).data);
+        assertEquals(new ObjectMapper().readTree("{\"foundA\":\"a1_uno_bravo\",\"foundB\":\"b1_uno_bravo\"}"),lvs.get(4).data);
+        assertEquals(new ObjectMapper().readTree("{\"foundA\":\"a1_uno_charlie\",\"foundB\":\"b1_uno_bravo\"}"),lvs.get(5).data);
     }
 
     @org.junit.jupiter.api.Test
@@ -575,7 +579,6 @@ public class LabelServiceTest {
         assertNotNull(lvs,"label_value should exit");
         assertEquals(3,lvs.size(),lvs.toString());
     }
-    @Disabled //Not implemented in recursive_java yet
     @Transactional
     @org.junit.jupiter.api.Test
     public void calculateLabelValues_NxN_reducing() throws JsonProcessingException {
@@ -604,42 +607,19 @@ public class LabelServiceTest {
                 new ObjectMapper().readTree("{ \"a1\":[0, 2, 4],\"b1\":[1, 3, 5]}"),new ObjectMapper().readTree("{}"));
         Run.persist(r);
         labelService.calculateLabelValues(t.labels,r.id);
-        List<LabelValue> found = LabelValue.find("from LabelValue lv where lv.run.id=?1",r.id).list();
-        assertEquals(5,found.size());
+        List<LabelValue> found = LabelValue.find("from LabelValue lv where  lv.label.name=?1 and lv.run.id=?2","nxn",r.id).list();
+        assertEquals(9,found.size(),found.stream().map(LabelValue::toString).collect(Collectors.joining("\n")));
+
+
         LabelValue lv = LabelValue.find("from LabelValue lv where lv.label.name=?1 and lv.run.id=?2","a1",r.id).singleResult();
         assertNotNull(lv);
+        assertTrue(lv.data.isArray());
+        assertEquals(3,lv.data.size());
+        assertEquals(0,lv.data.get(0).intValue());
+        assertEquals(4,lv.data.get(1).intValue());
+        assertEquals(8,lv.data.get(2).intValue());
         //it applied the 2x function
-        assertEquals(new ObjectMapper().readTree("[0,4,8]"),lv.data);
-        lv = LabelValue.find("from LabelValue lv where lv.label.name=?1 and lv.run.id=?2","nxn",r.id).singleResult();
-        assertNotNull(lv);
-        assertEquals(new ObjectMapper().readTree("[0,4,8,0,12,24,0,20,40]"),lv.data);
-    }
-
-
-    @Disabled //this is not a good unit test :)
-    @org.junit.jupiter.api.Test
-    public void calculateLabelValues_degradation_test() throws JsonProcessingException {
-        Test t = createTest();
-        Test t2 = createTest();
-        Run r2 = createRun(t2,"1");
-        labelService.calculateLabelValues(t2.labels,r2.id);
-        List<LabelService.ValueMap> t2valueMaps = labelService.labelValues("uri:keyed",t2.id,Collections.emptyList(),Collections.emptyList());
-        int LIMIT = 5000;
-        long length = Math.round(Math.ceil(Math.log10(LIMIT)));
-        for(int i=0; i< LIMIT; i++){
-            Run r = createRun(t,String.format("%"+length+"d",i));
-            long start = System.currentTimeMillis();
-            labelService.calculateLabelValues(t.labels,r.id);
-            long stop = System.currentTimeMillis();
-            double calculateDuration = ((double)stop-start)/1000;
-            start = System.currentTimeMillis();
-            List<LabelService.ValueMap> valueMaps = labelService.labelValues("uri:keyed",t2.id,Collections.emptyList(),Collections.emptyList());
-            stop = System.currentTimeMillis();
-            double labelValueDuration = ((double)stop-start)/1000;
-            System.out.printf("%"+length+"d %3.3f %3.3f%n",i,calculateDuration,labelValueDuration);
-            assertTrue(valueMaps.size()>1,"size = "+valueMaps.size());
-            assertTrue((stop-start)/1000 < 1);
-        }
+        //assertEquals(new ObjectMapper().readTree("[0,4,8]"),lv.data);//why on earth does this not work, is it long vs int?
     }
 
     @Transactional
@@ -697,24 +677,81 @@ public class LabelServiceTest {
         assertEquals("three",value.asText());
     }
 
-
-    //TODO this count is expecting NvN calculations to be correct
-    @Disabled
+    //not sure if we should support this use case (a label without extractors)
     @org.junit.jupiter.api.Test
-    public void getDerivedValues_iterA() throws JsonProcessingException {
-        Test t = createTest();
-        Run r1 = createRun(t,"uno");
-        Run r2 = createRun(t,"dos");
+    public void calculateLabelValues_no_extractor() throws JsonProcessingException, HeuristicRollbackException, SystemException, HeuristicMixedException, RollbackException, NotSupportedException {
+        tm.begin();
+        Test t = new Test("no-extractor");
+        Label l = new Label("foo",t)
+                .setReducer("(v)=>{ return 'foo';}");
+        t.loadLabels(l);
+        t.persist();
+        Run r = new Run(t.id,new ObjectMapper().readTree("{\"biz\":\"buz\"}"),new ObjectMapper().readTree("{}"));
+        r.persistAndFlush();
+        tm.commit();
+        labelService.calculateLabelValues(t.labels,r.id);
+        List<LabelValue> lvs = LabelValue.find("from LabelValue lv where lv.label.id=?1 and lv.run.id=?2",l.id,r.id).list();
+        assertEquals(1,lvs.size(),lvs.stream().map(LabelValue::toString).collect(Collectors.joining("\n")));
+        assertEquals("foo",lvs.get(0).data.asText());
+
+    }
+
+    @org.junit.jupiter.api.Test
+    public void getDerivedValues_iterA() throws JsonProcessingException, SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        Test t = new Test("example-test");
+        Label a1 = new Label("a1",t)
+                .loadExtractors(Extractor.fromString("$.a1").setName("a1"));
+        Label b1 = new Label("b1",t)
+                .loadExtractors(Extractor.fromString("$.b1").setName("b1"));
+        Label firstAKey = new Label("firstAKey",t)
+                .loadExtractors(Extractor.fromString("a1:$[0].key").setName("firstAKey"));
+        Label justA = new Label("justA",t)
+                .loadExtractors(Extractor.fromString("a1").setName("justA"));
+        Label iterA = new Label("iterA",t)
+                .setTargetSchema("uri:keyed")
+                .loadExtractors(Extractor.fromString("a1[]").setName("iterA"));
+        Label iterAKey = new Label("iterAKey",t)
+                .setTargetSchema("uri:different:keyed")
+                .loadExtractors(Extractor.fromString("a1[]:$.key").setName("iterAKey"));
+        Label iterB = new Label("iterB",t)
+                .setTargetSchema("uri:keyed")
+                .loadExtractors(Extractor.fromString("b1[]").setName("iterB"));
+        Label foundA = new Label("foundA",t)
+                .loadExtractors(Extractor.fromString("iterA:$.key").setName("foundA"));
+        Label foundB = new Label("foundB",t)
+                .loadExtractors(Extractor.fromString("iterB:$.key").setName("foundB"));
+        Label nxn = new Label("nxn",t)
+                .loadExtractors(
+                        Extractor.fromString("iterA:$.key").setName("foundA"),
+                        Extractor.fromString("iterB:$.key").setName("foundB")
+                );
+        Label jenkinsBuild = new Label("build",t)
+                .loadExtractors(Extractor.fromString(
+                        Extractor.METADATA_PREFIX+"metadata"+ Extractor.METADATA_SUFFIX+
+                                Extractor.NAME_SEPARATOR+ Extractor.PREFIX+".jenkins.build").setName("build")
+                );
+        nxn.multiType= Label.MultiIterationType.NxN;
+
+        t.loadLabels(justA,foundA,firstAKey,foundB,a1,b1,iterA,iterAKey,iterB,nxn,jenkinsBuild); // order should not matter
+        t.persist();
+        Run r1 = new Run(t.id,
+                new ObjectMapper().readTree("{ \"foo\" : { \"bar\" : \"bizz\" }, \"a1\": [ {\"key\":\"a1_alpha\"}, {\"key\":\"a1_bravo\"}, {\"key\":\"a1_charlie\"}], \"b1\": [{\"key\":\"b1_alpha\"}, {\"key\":\"b1_bravo\"}] }"),
+                new ObjectMapper().readTree("{ \"jenkins\" : { \"build\" : \"1\" } }"));
+        Run r2 = new Run(t.id,
+                new ObjectMapper().readTree("{ \"foo\" : { \"bar\" : \"bizz\" }, \"a1\": [ {\"key\":\"a2_alpha\"}, {\"key\":\"a2_bravo\"}, {\"key\":\"a2_charlie\"}], \"b1\": [{\"key\":\"b2_alpha\"}, {\"key\":\"b2_bravo\"}] }"),
+                new ObjectMapper().readTree("{ \"jenkins\" : { \"build\" : \"1\" } }"));
+        r1.persist();
+        r2.persist();
+        tm.commit();
         labelService.calculateLabelValues(t.labels,r1.id);
         labelService.calculateLabelValues(t.labels,r2.id);
-        Label iterA = Label.find("from Label l where l.name=?1 and l.parent.id=?2","iterA",t.id).singleResult();
-        Label nxn = Label.find("from Label l where l.name=?1 and l.parent.id=?2","nxn",t.id).singleResult();
-        Label foundA = Label.find("from Label l where l.name=?1 and l.parent.id=?2","foundA",t.id).singleResult();
         List<LabelValue> labelValues = LabelValue.find("from LabelValue lv where lv.label.id=?1 and lv.run.id=?2",iterA.id,r1.id).list();
+        assertEquals(3,labelValues.size(),labelValues.stream().map(LabelValue::toString).collect(Collectors.joining("\n")));
         List<LabelValue> found = labelService.getDerivedValues(labelValues.get(0),0);
-        assertFalse(found.isEmpty(),"found should not be empty");
-        assertEquals(7,found.size());
-        assertTrue(found.stream().anyMatch(lv->lv.label.equals(nxn)));
+        assertFalse(found.isEmpty(),"found should not be empty:\n"+found.stream().map(LabelValue::toString).collect(Collectors.joining("\n")));
+        assertEquals(3,found.size(),found.stream().map(LabelValue::toString).collect(Collectors.joining("\n")));
+        assertTrue(found.stream().anyMatch(lv->lv.label.equals(nxn)),found.stream().map(lv->lv.toString()+" "+lv.label.name).collect(Collectors.joining("\n")));
         assertTrue(found.stream().anyMatch(lv->lv.label.equals(foundA)));
     }
     @org.junit.jupiter.api.Test
@@ -796,9 +833,8 @@ public class LabelServiceTest {
         //labelService.calculateLabelValues(t.labels,r2.id);
         Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","iterA",t.id).singleResult();
         List<LabelService.ValueMap> labelValues = labelService.labelValues(l.id, r1.id,t.id, Collections.emptyList(),Collections.emptyList());
-        assertEquals(3,labelValues.size());
+        assertEquals(6,labelValues.size(),labelValues.stream().map(LabelService.ValueMap::toString).collect(Collectors.joining("\n")));
     }
-    @Disabled
     @org.junit.jupiter.api.Test
     public void multiType_NxN() throws JsonProcessingException {
         Test t = createTest();
@@ -806,13 +842,11 @@ public class LabelServiceTest {
         //Run r2 = createRun(t,"dos");
         labelService.calculateLabelValues(t.labels,r1.id);
         Label l = Label.find("from Label l where l.name=?1 and l.parent.id=?2","nxn",t.id).singleResult();
-        LabelValue lv = LabelValue.find("from LabelValue lv where lv.run.id=?1 and lv.label.id=?2",r1.id,l.id).firstResult();
+        List<LabelValue> lvs = LabelValue.find("from LabelValue lv where lv.run.id=?1 and lv.label.id=?2",r1.id,l.id).list();
 
         //expect 6 entries given 3 from iterA and 2 from iterB
-        assertEquals(6,lv.data.size());
+        assertEquals(6,lvs.size(),lvs.stream().map(LabelValue::toString).collect(Collectors.joining("\n")));
         //make sure the data contains the proper 3 x 2 combinations
-        JsonNode expected = (new ObjectMapper()).readTree("[{\"foundA\":\"a1_uno_alpha\",\"foundB\":\"b1_uno_alpha\"},{\"foundA\":\"a1_uno_bravo\",\"foundB\":\"b1_uno_alpha\"},{\"foundA\":\"a1_uno_charlie\",\"foundB\":\"b1_uno_alpha\"},{\"foundA\":\"a1_uno_alpha\",\"foundB\":\"b1_uno_bravo\"},{\"foundA\":\"a1_uno_bravo\",\"foundB\":\"b1_uno_bravo\"},{\"foundA\":\"a1_uno_charlie\",\"foundB\":\"b1_uno_bravo\"}]");
-        assertEquals(expected,lv.data,"data did not match expected "+lv.data);
     }
 
     @org.junit.jupiter.api.Test

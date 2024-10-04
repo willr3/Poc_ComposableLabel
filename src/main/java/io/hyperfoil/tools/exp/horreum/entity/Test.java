@@ -116,4 +116,12 @@ public class Test extends PanacheEntity {
         //Collections.sort(labels);
         kahnDagSort();
     }
+
+    public boolean equals(Object o){
+        if(o == null || !(o instanceof Test)){
+            return false;
+        }
+        Test t = (Test)o;
+        return this.id.equals(t.id);
+    }
 }
