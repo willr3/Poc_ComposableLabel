@@ -788,6 +788,44 @@ public class LabelServiceTest {
         assertNotNull(lv,"label_value should exit");
         assertEquals("123",lv.data.asText());
     }
+    @org.junit.jupiter.api.Test
+    public void labelValues_nested_3_deep() throws SystemException, NotSupportedException, JsonProcessingException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        Test t = new Test("deep");
+        t.persistAndFlush();
+        Label foo = new Label("foo",t).loadExtractors(Extractor.fromString("$.foo").setName("foo"));
+        Label schema = new Label("schema",t).loadExtractors(Extractor.fromString("foo[]").setName("schema"))
+                .setTargetSchema("schema");
+        Label b1 = new Label("b1",t).loadExtractors(Extractor.fromString("schema:$.b1").setName("b1"));
+        Label b2 = new Label("b2",t).loadExtractors(Extractor.fromString("b1:$.b2").setName("b2"));
+        Label b3 = new Label("b3",t).loadExtractors(Extractor.fromString("b2:$.b3").setName("b3"));
+        Label a1 = new Label("a1",t).loadExtractors(Extractor.fromString("schema:$.a1").setName("a1"));
+        Label a2 = new Label("a2",t).loadExtractors(Extractor.fromString("a1:$.a2").setName("a2"));
+        Label a3 = new Label("a3",t).loadExtractors(Extractor.fromString("a2:$.a3").setName("a3"));
+        Label c1 = new Label("c1",t).loadExtractors(Extractor.fromString("schema:$.c1").setName("c1"));
+        Label c2 = new Label("c2",t).loadExtractors(Extractor.fromString("c1:$.c2").setName("c2"));
+        Label c3 = new Label("c3",t).loadExtractors(Extractor.fromString("c2:$.c3").setName("c3"));
+        t.loadLabels(foo,schema,b1,b2,b3,a1,a2,a3,c1,c2,c3);
+        Run r = new Run(t.id,
+                new ObjectMapper().readTree("""
+                    {"foo": [
+                        {"a1":{"a2":{"a3":"a_first"}}, "b1":{"b2":{"b3":"b_first"}}, "c1":{"c2":{"c3":"c_first"}} },
+                        {"a1":{"a2":{"a3":"a_second"}}, "b1":{"b2":{"b3":"b_second"}}, "c1":{"c2":{}} },
+                        {"a1":{"a2":{"a3":"a_third"}}, "b1":{"b2":{"b3":"b_third"}}, "c1":{"c2":{"c3":"c_third"}} }
+                    ]}
+                """),
+                new ObjectMapper().readTree("{}")
+        );
+        r.persistAndFlush();
+        tm.commit();
+        labelService.calculateLabelValues(t.labels,r.id);
+
+        List<LabelService.ValueMap> valueMaps = labelService.labelValues("schema",t.id,Arrays.asList("a3","b3","c3"),null);
+        assertEquals(3,valueMaps.size());
+        assertEquals("c_first",valueMaps.get(0).data().get("c3").asText());
+        assertFalse(valueMaps.get(1).data().has("c3"));
+        assertEquals("c_third",valueMaps.get(2).data().get("c3").asText());
+    }
 
     @org.junit.jupiter.api.Test
     public void labelValues_schema() throws JsonProcessingException {
