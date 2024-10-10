@@ -1,6 +1,7 @@
 package io.hyperfoil.tools.exp.horreum.svc;
 
 import io.hyperfoil.tools.exp.horreum.entity.Label;
+import io.hyperfoil.tools.exp.horreum.entity.LabelGroup;
 import io.hyperfoil.tools.exp.horreum.entity.LabelReducer;
 import io.hyperfoil.tools.exp.horreum.entity.Test;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
@@ -9,7 +10,6 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import org.jboss.resteasy.reactive.Separator;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
@@ -44,12 +44,12 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
         Test t = new Test("rhivos-perf-comprehensive");
         String transformName = "transformIter";
         String transformPrefix = transformName+Extractor.NAME_SEPARATOR;//transform[]:
-        t.loadLabels(
+        t.setLabels(
                 new Label(transformName,t)
                         .loadExtractors(
                                 Extractor.fromString("transform"+Extractor.FOR_EACH_SUFFIX)
                         )
-                        .setTargetSchema("urn:rhivos-perf-comprehensive-datasets:01"),
+                        .setTargetSchema(new LabelGroup("urn:rhivos-perf-comprehensive-datasets:01")),
                 new Label("transform",t)
                         .loadExtractors(
                                 Extractor.fromString("$.user").setName("user"),
@@ -265,8 +265,9 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
             @QueryParam("exclude") @Separator(",") List<String> exclude,
             @QueryParam("multiFilter") @DefaultValue("false") boolean multiFilter){
         if(group!=null && !group.isBlank()){
+            LabelGroup found = LabelGroup.find("name",group).firstResult();
             //TODO call labelValues with schema
-            return service.labelValues(group,testId,include,exclude);
+            return service.labelValues(found,testId,include,exclude);
         }else {
             return service.labelValues(testId, filter, before, after, sort, direction, limit, page, include, exclude, multiFilter);
         }

@@ -33,7 +33,7 @@ public class ExtractorValidator implements ConstraintValidator<ValidTarget, Extr
                 if(extractor.targetLabel == null){
                     constraintValidatorContext.buildConstraintViolationWithTemplate("label value extractor needs a valid target label").addConstraintViolation();
                     rtrn = false;
-                }else if(!extractor.parent.parent.equals(extractor.targetLabel.parent)){
+                }else if(!extractor.parent.group.equals(extractor.targetLabel.group)){
                     constraintValidatorContext.buildConstraintViolationWithTemplate("label value extractor must extract from a label in the same test").addConstraintViolation();
                 }
             }

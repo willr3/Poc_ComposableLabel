@@ -5,23 +5,21 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
 import io.hyperfoil.tools.exp.horreum.valid.ValidTarget;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
-import jakarta.inject.Inject;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Entity
 @Table(
         name = "label",
-        uniqueConstraints = {
-                @UniqueConstraint(columnNames = {"name","parent_id"})
-        },
         indexes = {
                 @Index(name = "label_targetschema", columnList = "target_schema", unique = false),
-                @Index(name = "label_parent", columnList = "parent_id", unique = false)
+                @Index(name = "label_parent", columnList = "group_id", unique = false)
         }
 )
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -30,28 +28,108 @@ public class Label extends PanacheEntity implements Comparable<Label> {
     public static enum MultiIterationType { Length, NxN}
     public static enum ScalarVariableMethod { First, All}
 
+    public static Function<String,Label> DEFAULT_RESOLVER = str->Label.find("name",str).firstResult();
 
-    @Pattern(regexp = "^[^{].*[^}]$",message = "Extractor names cannot start with '{' or end with '}'")
-    @Pattern(regexp = "^[^$].+",message = "Extractor name cannot start with '$'")
-    @Pattern(regexp = ".*(?<!\\[])$",message = "Extractor name cannot end with '[]'")
+    public static Label findReference(String name,Long testId){
+        if (!name.contains(Extractor.NAME_SEPARATOR)) {
+            return Label.find("from Label l where l.name=?1 and l.parent.id=?2",name,testId).firstResult();
+        }else{
+            String split[] = name.split(":");
+            if(split.length==2){//includes parent or schema
+                //lookup the split[0] to see if it matches a schema name? (check all labels for target_schema
+
+            }else if (split.length==3){//includes parent and schema
+
+            }
+            return Label.find("name",name).firstResult();
+        }
+    }
+    //based on https://github.com/williamfiset/Algorithms/blob/master/src/main/java/com/williamfiset/algorithms/graphtheory/Kahns.java
+    public static List<Label> kahnDagSort(List<Label> labels){
+        Map<String, AtomicInteger> inDegrees = new HashMap<>();
+        if(labels == null || labels.isEmpty()){
+            return labels;
+        }
+        labels.forEach(l->{
+            inDegrees.put(l.name,new AtomicInteger(0));
+        });
+        labels.forEach(l->{
+            l.extractors.stream()
+                    .filter(e->Extractor.Type.VALUE.equals(e.type))
+                    .forEach(lve->{
+                        if(inDegrees.containsKey(lve.targetLabel.name)) {
+                            inDegrees.get(lve.targetLabel.name).incrementAndGet();
+                        }
+                    });
+        });
+        Queue<Label> q = new ArrayDeque<>();
+        labels.forEach(l->{
+            if(inDegrees.get(l.name).get()==0){
+                q.offer(l);
+            }
+        });
+        List<Label> rtrn = new ArrayList<>();
+        while(!q.isEmpty()){
+            Label l = q.poll();
+            rtrn.add(l);
+            l.extractors.stream()
+                    .filter(e->Extractor.Type.VALUE.equals(e.type))
+                    .forEach(lve->{
+                        if(inDegrees.containsKey(lve.targetLabel.name)) {
+                            int newDegree = inDegrees.get(lve.targetLabel.name).decrementAndGet();
+                            if (newDegree == 0) {
+                                q.offer(lve.targetLabel);
+                            }
+                        }
+                    });
+        }
+        int sum = inDegrees.values().stream().map(a->a.get()).reduce((a,b)->a+b).get();
+        if(sum > 0){
+            //this means there are loops!!
+            labels.forEach(l->{
+                if(inDegrees.get(l.name).get() > 0){
+                    rtrn.add(0,l);//they will then go to the back
+                }
+            });
+        }
+        //reverse because of graph direction
+        Collections.reverse(rtrn);
+        return rtrn;
+    }
+
+
+
+    @Pattern(regexp = "^[^{].*[^}]$",message = "Label names cannot start with '{' or end with '}'")
+    @Pattern(regexp = "^[^$].+",message = "Label name cannot start with '$'")
+    @Pattern(regexp = ".*(?<!\\[])$",message = "Label name cannot end with '[]'")
     public String name;
 
-    @NotNull(message = "label must reference a test")
-    @ManyToOne(cascade = {CascadeType.PERSIST,CascadeType.MERGE})
-    @JoinColumn(name = "parent_id")
+    //a label in a labelGroup would have a null test, how do we conditionally validate that?
+    @NotNull(message = "label must reference a group")
+    @ManyToOne(cascade = {CascadeType.ALL})
+    @JoinColumn(name = "group_id")
     @JsonIgnore
-    public Test parent;
+    public LabelGroup group; //using string to simplify the PoC
 
-    public String target_schema; //using a string to simplify the PoC
+    @ManyToOne
+    public Label sourceLabel; //the label that substitutes for the Run from the perspectice of this run
+
+    @ManyToOne
+    public LabelGroup sourceGroup; //
+
+    @ManyToOne(cascade = {CascadeType.ALL})
+    public LabelGroup targetGroup;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @OneToMany(cascade = {CascadeType.PERSIST,CascadeType.MERGE}, fetch = FetchType.EAGER, orphanRemoval = true, mappedBy = "parent")
     public List<@NotNull(message="null extractors are not supported") @ValidTarget Extractor> extractors;
+
     @ManyToOne(cascade = {CascadeType.PERSIST,CascadeType.MERGE})
     public LabelReducer reducer;
 
     @Enumerated(EnumType.STRING)
     public MultiIterationType multiType = MultiIterationType.Length;
+
     @Enumerated(EnumType.STRING)
     public ScalarVariableMethod scalarMethod = ScalarVariableMethod.First;
 
@@ -59,35 +137,107 @@ public class Label extends PanacheEntity implements Comparable<Label> {
     public Label(String name){
         this(name,null);
     }
-    public Label(String name,Test parent){
+    public Label(String name,LabelGroup parent){
         this.name = name;
-        this.parent = parent;
+        this.group = parent;
         this.extractors = new ArrayList<>();
     }
 
+    public Label loadExtractors(List<Extractor> extractors){
+        this.extractors = extractors;
+        this.extractors.forEach(e->e.parent=this);
+        return this;
+    }
     public Label loadExtractors(Extractor...extractors){
         this.extractors = Arrays.asList(extractors);
         this.extractors.forEach(e->e.parent=this);
         return this;
     }
-    public Label setTargetSchema(String targetSchema){
-        this.target_schema = targetSchema;
+    public Label setTargetSchema(LabelGroup targetSchema){
+        this.targetGroup = targetSchema;
         return this;
     }
 
+    public boolean hasReducer(){return reducer!=null;}
     public Label setReducer(String javascript){
-        LabelReducer reducer = new LabelReducer(javascript);
-        this.reducer = reducer;
-        return this;
+        return setReducer(new LabelReducer(javascript));
     }
     public Label setReducer(LabelReducer reducer){
         this.reducer = reducer;
         return this;
     }
 
-    @Override
-    public String toString(){return "label=[name:"+name+" id:"+id+" extractors="+(extractors==null?"null":extractors.stream().map(e->e.name).collect(Collectors.toList()))+"]";}
+    public Label setGroup(LabelGroup group){
+        this.group = group;
+        return this;
+    }
+    public boolean hasSourceLabel(){return sourceLabel !=null;}
+    public boolean hasSourceGroup(){return sourceGroup!=null;}
+    public LabelGroup getGroup(){return group;}
 
+
+    @Override
+    public String toString(){return "label=[name:"+name+" id:"+id+" group:"+(group==null?"null":group.id)+" extractors="+(extractors==null?"null":extractors.stream().map(e->e.name).collect(Collectors.toList()))+"]";}
+
+
+    public String getFqdn(){
+        return (sourceLabel !=null ? sourceLabel.name+":" : "") + (group!=null ? group.name+":" : "") + name;
+    }
+
+    public Label copy(Function<String,Label> resolver){
+        Label newLabel = new Label();
+
+        newLabel.name = this.name;
+        newLabel.group = this.group;
+        newLabel.multiType = this.multiType;
+        newLabel.scalarMethod = this.scalarMethod;
+        if(hasReducer()) {
+            newLabel.setReducer(this.reducer.function);
+        }
+        if( this.hasSourceLabel() ){
+            newLabel.sourceLabel = resolver.apply(this.sourceLabel.getFqdn());
+        }
+        List<Extractor> newExtractors = new ArrayList<>();
+        for(Extractor e : extractors){
+            newExtractors.add(e.copy(resolver));
+        }
+        newLabel.loadExtractors(newExtractors);
+        return newLabel;
+    }
+    public void unloadGroup(LabelGroup group){
+        Label.find("from Label l where l.group=?1 and l.groupSource=?2 and l.group=?3",this.group,this,group)
+                .stream().forEach(found->{
+                    this.group.labels.remove(found);
+                });
+    }
+    public void loadGroup(LabelGroup group){
+        Map<String,Label> scope = new HashMap<>();
+        scope.put(this.getFqdn(),this);
+        scope.put(this.name,this);
+        //they need to be sorted to ensure extractor dependencies are available
+        List<Label> sorted = Label.kahnDagSort(group.labels);
+        for(Label groupLabel : sorted){
+            Label copy = groupLabel.copy(scope::get);
+            scope.put(copy.getFqdn(),copy);
+            scope.put(copy.name,copy);
+            copy.sourceLabel =this;
+            copy.extractors.forEach(extractor -> {
+                if(Extractor.Type.PATH.equals(extractor.type)){
+                    extractor.type = Extractor.Type.VALUE;
+                    extractor.targetLabel = this;
+                }
+                //VALUE extractor targetLabel were handled by Extractor.copy
+                //what to do about METADATA?
+            });
+            if(copy.group!=null){
+                copy.sourceGroup = copy.group;
+            }
+            if(this.group!=null){
+                copy.group=this.group;
+                this.group.labels.add(copy);
+            }
+        }
+    }
 
     @Override
     public boolean equals(Object o){
@@ -95,7 +245,7 @@ public class Label extends PanacheEntity implements Comparable<Label> {
             return false;
         }
         Label o1 = (Label)o;
-        boolean rtrn = Objects.equals(this.id, o1.id) && this.name.equals(o1.name) && Objects.equals(this.parent,o1.parent);
+        boolean rtrn = Objects.equals(this.id, o1.id) && this.name.equals(o1.name) && Objects.equals(this.group,o1.group);
         return rtrn;
     }
     @Override

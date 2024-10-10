@@ -3,9 +3,9 @@ package io.hyperfoil.tools.exp.horreum.entity;
 import io.hyperfoil.tools.exp.horreum.entity.extractor.Extractor;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
-import org.junit.jupiter.api.Disabled;
 
 import java.util.*;
 
@@ -17,6 +17,121 @@ public class LabelTest {
     @Inject
     Validator validator;
 
+    @org.junit.jupiter.api.Test
+    public void getFqdn_justName(){
+        Label foo = new Label("foo");
+        assertEquals("foo",foo.getFqdn());
+    }
+
+    @org.junit.jupiter.api.Test
+    public void getFqdn_group_name(){
+        Label foo = new Label("foo").setGroup(new LabelGroup("group"));
+        assertEquals("group:foo",foo.getFqdn());
+    }
+    @org.junit.jupiter.api.Test
+    public void getFqdn_source_group_name(){
+        Label source = new Label("source");
+        Label foo = new Label("foo").setGroup(new LabelGroup("group"));
+        foo.sourceLabel = source;
+        assertEquals("source:group:foo",foo.getFqdn());
+    }
+
+
+    //I am not sure a label with a source but no group should happen
+    //
+    @org.junit.jupiter.api.Test
+    public void getFqdn_source_name(){
+        Label source = new Label("source");
+        Label foo = new Label("foo");
+        foo.sourceLabel = source;
+        assertEquals("source:foo",foo.getFqdn());
+    }
+
+    @org.junit.jupiter.api.Test
+    @Transactional
+    public void loadGroup(){
+        LabelGroup group = new LabelGroup("group");
+        Label first = new Label("first",group).loadExtractors(
+                Extractor.fromString("$.foo").setName("foo")
+        );
+        Label second = new Label("second",group).loadExtractors(
+                Extractor.fromString("first:$.bar").setName("bar")
+        );
+        group.labels = Arrays.asList(first,second);
+        group.persistAndFlush();
+
+        Test t = new Test("copy");
+        Label foo = new Label("foo",t)
+                .loadExtractors(
+                        Extractor.fromString("$.foo")
+                );
+        t.setLabels(foo);
+        foo.loadGroup(group);
+        t.persistAndFlush();
+
+        assertEquals(3,t.labels.size(),"expect 3 labels for the test");
+
+        //mutate first label's extractor
+        first.extractors.get(0).jsonpath="$.foo.bar";
+
+        assertEquals("$.foo.bar",first.extractors.get(0).jsonpath,"extractor should have changed");
+
+        for(Label l : t.labels){
+            assertEquals(t,l.group,"labels should reference parent");
+            if(l.hasSourceGroup()){
+                assertEquals(group,l.sourceGroup,"loaded label should reference the group");
+                assertEquals(foo,l.sourceLabel,"loaded label should reference source label");
+                assertFalse(group.labels.contains(l),"label should not be part of original group of labels");
+                if(l.extractors.size()>0){
+                    assertNotEquals(first.extractors.get(0).jsonpath,l.extractors.get(0).jsonpath,"nothing should match "+first.extractors.get(0).jsonpath+" but "+l.name+" has a matching extractor");
+                }
+            }
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    @Transactional
+    public void copy_basic(){
+
+        Test t = new Test("copy");
+        Label original = new Label("label",t);
+        Label foo = new Label("foo",t)
+                .loadExtractors(
+                        Extractor.fromString("$.foo")
+                );
+        original.loadExtractors(
+                Extractor.fromString("$.foo").setName("foo"),
+                Extractor.fromString("foo:$.bar").setName("bar")
+        );
+        t.setLabels(original,foo);
+        t.persistAndFlush();
+        Label fake = new Label("fake");
+        //we use fake to ensure it changes for the copy
+        Label copy = original.copy(str->fake);
+
+        assertEquals(original.name,copy.name,"names should match");
+        assertEquals(original.group,copy.group,"group should match");
+        assertEquals(original.multiType,copy.multiType,"multi type should match");
+        assertEquals(original.scalarMethod,copy.scalarMethod,"scalar method should match");
+        assertEquals(original.sourceLabel,copy.sourceLabel,"source should match");
+        assertEquals(original.extractors.size(),copy.extractors.size(),"extractor count should match");
+        for(int i=0; i<original.extractors.size(); i++){
+            assertEquals(original.extractors.get(i).name,copy.extractors.get(i).name,"extractors["+i+"] name should match");
+            assertEquals(original.extractors.get(i).forEach,copy.extractors.get(i).forEach,"extractor["+i+"] for each should match");
+            assertEquals(original.extractors.get(i).jsonpath,copy.extractors.get(i).jsonpath,"extractors["+i+"] jsonpath should match");
+            assertEquals(original.extractors.get(i).type,copy.extractors.get(i).type,"extractors["+i+"] type should match");
+            if(original.extractors.get(i).type.equals(Extractor.Type.VALUE)){
+                assertNotEquals(original.extractors.get(i).targetLabel,copy.extractors.get(i).targetLabel,"target labels should be different");
+            }
+            assertEquals(original,original.extractors.get(i).parent);
+            assertEquals(copy,copy.extractors.get(i).parent);
+        }
+        //mutate original to check for independence
+        original.extractors.get(0).jsonpath="$.foo.foo";
+        original.extractors.get(1).jsonpath="$.bar.bar";
+        assertNotEquals(original.extractors.get(0).jsonpath,copy.extractors.get(0).jsonpath,"mutating extractor jsonpath should not change copy");
+        assertNotEquals(original.extractors.get(1).jsonpath,copy.extractors.get(1).jsonpath,"mutating extractor jsonpath shoudl not change copy");
+    }
     @org.junit.jupiter.api.Test
     public void invalid_null_extractor(){
         Label l = new Label();
@@ -38,13 +153,13 @@ public class LabelTest {
         Label justA = new Label("justA",t)
                 .loadExtractors(Extractor.fromString("a1").setName("justA"));
         Label iterA = new Label("iterA",t)
-                .setTargetSchema("uri:keyed")
+                .setTargetSchema(new LabelGroup("uri:keyed"))
                 .loadExtractors(Extractor.fromString("a1[]").setName("iterA"));
         Label iterAKey = new Label("iterAKey",t)
                 //.setTargetSchema("uri:keyed") // causes an error when it targets a schema
                 .loadExtractors(Extractor.fromString("a1[]:$.key").setName("iterAKey"));
         Label iterB = new Label("iterB",t)
-                .setTargetSchema("uri:keyed")
+                .setTargetSchema(new LabelGroup("uri:keyed"))
                 .loadExtractors(Extractor.fromString("b1[]").setName("iterB"));
         Label foundA = new Label("foundA",t)
                 .loadExtractors(Extractor.fromString("iterA:$.key").setName("foundA"));
@@ -62,7 +177,7 @@ public class LabelTest {
                 );
         nxn.multiType= Label.MultiIterationType.NxN;
 
-        t.loadLabels(justA,foundA,firstAKey,foundB,a1,b1,iterA,iterAKey,iterB,nxn,jenkinsBuild); // order should not matter
+        t.setLabels(justA,foundA,firstAKey,foundB,a1,b1,iterA,iterAKey,iterB,nxn,jenkinsBuild); // order should not matter
 
 
         int nxnIndex = t.labels.indexOf(nxn);
@@ -102,7 +217,7 @@ public class LabelTest {
                         Extractor.fromString("iterB:$.key").setName("foundB")
                 );
         Test t = new Test("example-test");
-        t.loadLabels(nxn,found,iterB,iterA,b1,a1);
+        t.setLabels(nxn,found,iterB,iterA,b1,a1);
         List<Label> list = new ArrayList<>(t.labels);
 
         int a1Index = list.indexOf(a1);
@@ -261,7 +376,7 @@ public class LabelTest {
         Test t = new Test("example-test");
         Label l1 = new Label("foo",t).loadExtractors(Extractor.fromString("$.foo"));
         Label l2 = new Label("bar",t).loadExtractors(Extractor.fromString("foo:$.bar"));
-        t.loadLabels(l1,l2);
+        t.setLabels(l1,l2);
 
         assertFalse(l1.isCircular());
         assertFalse(l2.isCircular());

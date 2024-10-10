@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 /**
  * Base class for all extractors to represent
@@ -24,6 +25,8 @@ public class Extractor extends PanacheEntity {
     public static final String METADATA_PREFIX = "{";
     public static final String METADATA_SUFFIX = "}";
     private static final AtomicInteger counter = new AtomicInteger(0);
+
+
 
     @NotNull(message = "extractor must reference a label")
     @ManyToOne(cascade = CascadeType.PERSIST)
@@ -52,12 +55,30 @@ public class Extractor extends PanacheEntity {
     @JsonIgnore
     public boolean forEach=false;
 
+    public Extractor copy(Function<String,Label> resolver){
+        Extractor copy = new Extractor();
+        copy.parent = resolver.apply(this.parent.name);
+        copy.name = this.name;
+        copy.type = this.type;
+        copy.jsonpath = this.jsonpath;
+        if (this.targetLabel!=null) {
+            copy.targetLabel = resolver.apply(this.targetLabel.name);
+        }
+        copy.column_name = this.column_name;
+        copy.forEach = this.forEach;
+        return copy;
+    }
+
+
     public Extractor setName(String name){
         this.name = name;
         return this;
     }
 
     public static Extractor fromString(String input){
+        return fromString(input,Label::new/*Label.DEFAULT_RESOLVER*/);
+    }
+    public static Extractor fromString(String input, Function<String,Label> resolver){
         Extractor rtrn = new Extractor();
         if(input.startsWith(PREFIX) || input.startsWith(FOR_EACH_SUFFIX+NAME_SEPARATOR)){
             rtrn.type = Type.PATH;
@@ -103,7 +124,7 @@ public class Extractor extends PanacheEntity {
                     rtrn.forEach=true;
                     name = name.substring(0,name.length()-FOR_EACH_SUFFIX.length());
                 }
-                Label found = Label.find("name",name).firstResult();
+                Label found = resolver.apply(name);
 //            Label found = null;
                 if(found==null){
                     found = new Label();

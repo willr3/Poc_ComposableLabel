@@ -37,7 +37,7 @@ public class LabelService {
     public void calculateLabelValue(Label l, Long runId){
         ExtractedValues extractedValues = calculateExtractedValuesWithIterated(l,runId);
         Run r = Run.findById(runId);
-        if(l.extractors.size()==0){
+        if(l.extractors.isEmpty()){
             LabelValue newValue = new LabelValue();
             newValue.label = l;
             newValue.run=r;
@@ -401,7 +401,7 @@ public class LabelService {
      * Get all the LabelValues for the given test that target the specific schema.
      */
     public List<LabelValue> getBySchema(String schema,Long testId){
-        return LabelValue.find("from LabelValue lv where lv.label.target_schema = ?1 and lv.label.parent.id = ?2",schema,testId).list();
+        return LabelValue.find("from LabelValue lv where lv.label.targetGroup.name = ?1 and lv.label.group.id = ?2",schema,testId).list();
     }
 
 
@@ -435,8 +435,10 @@ public class LabelService {
 
     //get the labelValues for all instances of a target schema for a test
     //could also have a labelValues based on label name, would that be useful? label name would not be merge-able across multiple labels
-    public List<ValueMap> labelValues(String schema,long testId, List<String> include, List<String> exclude){
+    public List<ValueMap> labelValues(LabelGroup group,long testId, List<String> include, List<String> exclude){
         List<ValueMap> rtrn = new ArrayList<>();
+        //LabelGroup group = LabelGroup.find("name",schema).firstResult();
+        Test t = Test.findById(testId);
         String labelNameFilter = "";
         if (include!=null && !include.isEmpty()){
             if(exclude!=null && !exclude.isEmpty()){
@@ -467,7 +469,7 @@ public class LabelService {
                                 left join label_values lv on lvs.labelvalue_id = lv.id
                                 left join label l on lv.label_id = l.id
                             where
-                                lvs.sources_id in (select lv.id from label_values lv left join label l on l.id = lv.label_id where l.target_schema = :schema and l.parent_id = :testId)
+                                lvs.sources_id in (select lv.id from label_values lv left join label l on l.id = lv.label_id where l.targetgroup_id = :schema and l.group_id = :testId)
                             union all
                             select
                                 bag.run_id as run_id,
@@ -505,7 +507,7 @@ public class LabelService {
                             from grouped group by run_id,parent_id,name
                         ) select run_id,parent_id,name,data from stack
                         """.replace("LABEL_NAME_FILTER",labelNameFilter)
-                ).setParameter("schema",schema)
+                ).setParameter("schema",group.id)
                 .setParameter("testId",testId);
 
         if(!labelNameFilter.isEmpty()){
@@ -734,7 +736,7 @@ public class LabelService {
     /*
         LabelValueExtractor on an iterated label_value will need to run N separate times because it will be forced to be an iterated value
      */
-    //incorrectly reporting that the value of an iterated extractor is not iterated, I think iterated needs to be a logicl or of forEach and lv.isIterated
+    //incorrectly reporting that the value of an iterated extractor is not iterated, I think iterated needs to be a logical or of forEach and lv.isIterated
     public ExtractedValues calculateExtractedValuesWithIterated(Label l, long runId){
         ExtractedValues rtrn = new ExtractedValues();
 
