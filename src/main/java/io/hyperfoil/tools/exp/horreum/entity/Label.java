@@ -18,11 +18,14 @@ import java.util.stream.Collectors;
 @Table(
         name = "label",
         indexes = {
-                @Index(name = "label_targetschema", columnList = "target_schema", unique = false),
+                @Index(name = "label_target_group", columnList = "targetgroup_id", unique = false),
                 @Index(name = "label_parent", columnList = "group_id", unique = false)
         }
 )
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Inheritance(strategy = InheritanceType.SINGLE_TABLE)
+@DiscriminatorColumn(name = "type")
+@DiscriminatorValue("user")
 public class Label extends PanacheEntity implements Comparable<Label> {
 
     public static enum MultiIterationType { Length, NxN}
@@ -181,7 +184,7 @@ public class Label extends PanacheEntity implements Comparable<Label> {
 
 
     public String getFqdn(){
-        return (sourceLabel !=null ? sourceLabel.name+":" : "") + (group!=null ? group.name+":" : "") + name;
+        return (sourceLabel !=null ? sourceLabel.getFqdn()+":" : "") + (group!=null ? group.name+":" : "") + name;
     }
 
     public Label copy(Function<String,Label> resolver){
