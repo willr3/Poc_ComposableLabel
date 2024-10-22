@@ -56,10 +56,8 @@ public class LabelServiceTest {
         Label third = new Label("label_3",group);
         third.sourceGroup=source3;
 
-
         Label fourth = new Label("label_4",group);
         fourth.sourceGroup=source3;
-
 
         second.sourceLabel=first;
         third.sourceLabel=second;
@@ -91,8 +89,7 @@ public class LabelServiceTest {
         pub.persist();
 
         List<LabelGroup> found = labelService.findGroup("bar","foo");
-        System.out.println(found.size());
-        found.forEach(f-> System.out.println(f.name+" "+f.id));
+        assertEquals(2,found.size());
     }
 
     @Transactional

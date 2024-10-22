@@ -23,7 +23,8 @@ public class LabelTest {
         LabelGroup group = new LabelGroup("getFqdn_justName");
         LabelGroup source1 = new LabelGroup("aGroup");
         Label first = new Label("label_1",group);
-        first.sourceGroup=source1;
+
+        //first.sourceGroup=source1;
 
         LabelGroup source2 = new LabelGroup("bGroup");
         Label second = new Label("label_2",group);
@@ -47,6 +48,8 @@ public class LabelTest {
         second.persistAndFlush();
         first.persistAndFlush();
         third.persistAndFlush();
+
+        assertEquals("label_1:label_2:label_3:label_4",fourth.getFqdn());
 
         //assertEquals("foo",foo.getFqdn());
     }
@@ -136,6 +139,10 @@ public class LabelTest {
         Label fake = new Label("fake");
         //we use fake to ensure it changes for the copy
         Label copy = original.copy(str->fake);
+
+        assertTrue(copy.isCopy());
+        assertEquals(copy.originalLabel,original);
+        assertFalse(copy.isDirty);
 
         assertEquals(original.name,copy.name,"names should match");
         assertEquals(original.group,copy.group,"group should match");

@@ -116,6 +116,9 @@ public class Label extends PanacheEntity implements Comparable<Label> {
     public LabelGroup group; //using string to simplify the PoC
 
     @ManyToOne(cascade = {CascadeType.ALL})
+    public Label originalLabel; //where this label was copied from
+
+    @ManyToOne(cascade = {CascadeType.ALL})
     public Label sourceLabel; //the label that substitutes for the Run from the perspective of this run
 
     @ManyToOne(cascade = {CascadeType.ALL})
@@ -138,6 +141,7 @@ public class Label extends PanacheEntity implements Comparable<Label> {
     public ScalarVariableMethod scalarMethod = ScalarVariableMethod.First;
 
     public boolean splitting;
+    public boolean isDirty;
 
     public Label(){}
     public Label(String name){
@@ -194,13 +198,20 @@ public class Label extends PanacheEntity implements Comparable<Label> {
 
 
 
-    public String getFqdn(){
-        return (sourceLabel !=null ? sourceLabel.getFqdn()+":" : "") + (group!=null ? group.name+":" : "") + name;
+    @PreUpdate
+    public void setDirty(){
+        this.isDirty = true;
     }
+
+    public String getFqdn(){
+        return (sourceLabel !=null ? sourceLabel.getFqdn()+":" : "") + name;
+    }
+
+    public boolean isCopy(){return originalLabel!=null;}
 
     public Label copy(Function<String,Label> resolver){
         Label newLabel = new Label();
-
+        newLabel.originalLabel = this;
         newLabel.name = this.name;
         newLabel.group = this.group;
         newLabel.multiType = this.multiType;

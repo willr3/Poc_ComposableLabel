@@ -217,27 +217,34 @@ public class LabelService {
             }
         }
     }
+    //TODO this is appending the current group name to the references and that is not needed?
+    //Does not include a label without a sourceGroup?
+    //min is alphabetically sorting not by length?
     public List<Label> whatCanWeFind(String name,long groupId){
         List<Label> rtrn = new ArrayList<>();
         //noinspection unchecked
         Label.getEntityManager().createNativeQuery(
             """
-            with recursive tree as (
-                    select
-                            l.id as id,
-                            l.sourcelabel_id,
-                            l.name as name,
-                            concat_ws(':',lg.name,l.name) as local_id,
-                            concat_ws(':',lg.name,l.name) as fqdn
-                    from label l left join labelgroup lg on l.sourcegroup_id = lg.id where l.group_id=:groupId
-                    union all
-                    select
-                            l.id,
-                            l.sourcelabel_id,
-                            l.name as name,
-                            concat_ws(':',lg.name,l.name) as local_id,
-                            t.fqdn || ':' || concat_ws(':',lg.name,l.name) as fqdn
-                    from tree as t inner join label l on t.id = l.sourcelabel_id left join labelgroup lg on l.sourceGroup_id = lg.id)
+            with
+            recursive tree as (
+                select
+                    l.id as id,
+                    l.sourcelabel_id,
+                    l.name as name,
+                    l.name::text as fqdn
+                from label l where l.group_id=:groupId
+                union all
+                select
+                    l.id,
+                    l.sourcelabel_id,
+                    l.name as name,
+                    t.fqdn || ':' || l.name as fqdn
+                from
+                    tree as t inner join label l
+                on
+                    t.id = l.sourcelabel_id),
+            cte as (
+                select id,name,fqdn, rank() over(partition by id order by length(fqdn) desc) as pos from tree)
             select id,name,min(fqdn) as fqdn from tree where fqdn like :name group by id,name order by fqdn asc            
             """
         )
@@ -283,9 +290,6 @@ public class LabelService {
     }
 
 
-    public List<LabelGroup> findGroup(String name) {
-        return findGroup(name,"foo");//foo group is a placeholder
-    }
     //This is a lookup for a group visible to the user based on a permission scope (team name?)
     public List<LabelGroup> findGroup(String name,String scope){
         if(name==null || name.isBlank()){
