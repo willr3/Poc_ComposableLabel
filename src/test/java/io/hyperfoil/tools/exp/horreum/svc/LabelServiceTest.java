@@ -39,6 +39,61 @@ public class LabelServiceTest {
     @Inject
     Validator validator;
 
+    @org.junit.jupiter.api.Test
+    public void whatCanWeFind_simple() throws SystemException, NotSupportedException, HeuristicRollbackException, HeuristicMixedException, RollbackException {
+        tm.begin();
+        LabelGroup group = new LabelGroup("getFqdn_justName");
+        LabelGroup source1 = new LabelGroup("aGroup");
+        Label first = new Label("label_1",group);
+        first.sourceGroup=source1;
+
+        LabelGroup source2 = new LabelGroup("bGroup");
+        Label second = new Label("label_2",group);
+        second.sourceGroup=source2;
+
+
+        LabelGroup source3 = new LabelGroup("cGroup");
+        Label third = new Label("label_3",group);
+        third.sourceGroup=source3;
+
+
+        Label fourth = new Label("label_4",group);
+        fourth.sourceGroup=source3;
+
+
+        second.sourceLabel=first;
+        third.sourceLabel=second;
+        fourth.sourceLabel=third;
+
+        fourth.persistAndFlush();
+        second.persistAndFlush();
+        first.persistAndFlush();
+        third.persistAndFlush();
+        tm.commit();
+
+        List<Label> found = labelService.whatCanWeFind("label_3",group.id);
+        assertEquals(2,found.size(),"expect to find 2 labels");
+        assertEquals(third.name,found.get(0).name,"first entry should be label_3");
+        assertEquals(fourth.name,found.get(1).name,"second entry shoudl be label_4");
+    }
+
+    @Transactional
+    @org.junit.jupiter.api.Test
+    public void findGroup_multiple_scope(){
+        LabelGroup nope = new LabelGroup("bar");
+        nope.owner="wrong";
+        LabelGroup local = new LabelGroup("bar");
+        local.owner="foo";
+        LabelGroup pub = new LabelGroup("bar");
+        pub.owner="public";
+        nope.persist();
+        local.persist();
+        pub.persist();
+
+        List<LabelGroup> found = labelService.findGroup("bar","foo");
+        System.out.println(found.size());
+        found.forEach(f-> System.out.println(f.name+" "+f.id));
+    }
 
     @Transactional
     @org.junit.jupiter.api.Test

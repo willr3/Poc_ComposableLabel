@@ -8,6 +8,7 @@ import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import org.hibernate.annotations.Formula;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -114,10 +115,10 @@ public class Label extends PanacheEntity implements Comparable<Label> {
     @JsonIgnore
     public LabelGroup group; //using string to simplify the PoC
 
-    @ManyToOne
-    public Label sourceLabel; //the label that substitutes for the Run from the perspectice of this run
+    @ManyToOne(cascade = {CascadeType.ALL})
+    public Label sourceLabel; //the label that substitutes for the Run from the perspective of this run
 
-    @ManyToOne
+    @ManyToOne(cascade = {CascadeType.ALL})
     public LabelGroup sourceGroup; //
 
     @ManyToOne(cascade = {CascadeType.ALL})
@@ -136,6 +137,8 @@ public class Label extends PanacheEntity implements Comparable<Label> {
     @Enumerated(EnumType.STRING)
     public ScalarVariableMethod scalarMethod = ScalarVariableMethod.First;
 
+    public boolean splitting;
+
     public Label(){}
     public Label(String name){
         this(name,null);
@@ -144,7 +147,14 @@ public class Label extends PanacheEntity implements Comparable<Label> {
         this.name = name;
         this.group = parent;
         this.extractors = new ArrayList<>();
+        this.splitting = false;
     }
+
+    public Label setSplitting(boolean splitting){
+        this.splitting = splitting;
+        return this;
+    }
+    public boolean isSplitting(){return splitting;}
 
     public Label loadExtractors(List<Extractor> extractors){
         this.extractors = extractors;
@@ -181,6 +191,7 @@ public class Label extends PanacheEntity implements Comparable<Label> {
 
     @Override
     public String toString(){return "label=[name:"+name+" id:"+id+" group:"+(group==null?"null":group.id)+" extractors="+(extractors==null?"null":extractors.stream().map(e->e.name).collect(Collectors.toList()))+"]";}
+
 
 
     public String getFqdn(){

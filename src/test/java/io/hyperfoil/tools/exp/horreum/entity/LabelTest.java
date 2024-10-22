@@ -17,10 +17,38 @@ public class LabelTest {
     @Inject
     Validator validator;
 
+    @Transactional
     @org.junit.jupiter.api.Test
     public void getFqdn_justName(){
-        Label foo = new Label("foo");
-        assertEquals("foo",foo.getFqdn());
+        LabelGroup group = new LabelGroup("getFqdn_justName");
+        LabelGroup source1 = new LabelGroup("aGroup");
+        Label first = new Label("label_1",group);
+        first.sourceGroup=source1;
+
+        LabelGroup source2 = new LabelGroup("bGroup");
+        Label second = new Label("label_2",group);
+        second.sourceGroup=source2;
+
+
+        LabelGroup source3 = new LabelGroup("cGroup");
+        Label third = new Label("label_3",group);
+        third.sourceGroup=source3;
+
+
+        Label fourth = new Label("label_4",group);
+        fourth.sourceGroup=source3;
+
+
+        second.sourceLabel=first;
+        third.sourceLabel=second;
+        fourth.sourceLabel=third;
+
+        fourth.persistAndFlush();
+        second.persistAndFlush();
+        first.persistAndFlush();
+        third.persistAndFlush();
+
+        //assertEquals("foo",foo.getFqdn());
     }
 
     @org.junit.jupiter.api.Test

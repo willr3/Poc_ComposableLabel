@@ -33,20 +33,47 @@ public class LabelService {
         }
     }
 
+    private int storeLabelData(Run r, Label l, JsonNode data, int starIndex,List<LabelValue> sources){
+        int idx = starIndex;
+        if(l.isSplitting() && data.isArray()){
+            for(JsonNode datum : data){
+                LabelValue newValue = new LabelValue();
+                newValue.ordinal = idx;
+                idx++;
+                newValue.label = l;
+                newValue.run = r;
+                newValue.data = datum;
+                if(sources!=null && !sources.isEmpty()){
+                    sources.stream().forEach(newValue::addSource);
+                }
+                newValue.persist();
+            }
+        }else{
+            if(l.isSplitting()){
+                //TODO do we alert the user that a splitting label only works on arrays or do we split objects and scalars too?
+            }
+            LabelValue newValue = new LabelValue();
+            newValue.label = l;
+            newValue.ordinal = idx;
+            idx++;
+            newValue.run = r;
+            newValue.data = data;
+            if(sources!=null && !sources.isEmpty()){
+                sources.stream().forEach(newValue::addSource);
+            }
+            newValue.persist();
+        }
+        return idx;
+    }
+
     @Transactional
     public void calculateLabelValue(Label l, Long runId){
         ExtractedValues extractedValues = calculateExtractedValuesWithIterated(l,runId);
         Run r = Run.findById(runId);
+        //when would we expect a label without extractors? That just duplicates data storage
         if(l.extractors.isEmpty()){
-            LabelValue newValue = new LabelValue();
-            newValue.label = l;
-            newValue.run=r;
-            newValue.data = r.data;
-            if(l.reducer!=null){
-                newValue.data = l.reducer.evalJavascript(newValue.data);
-            }
-            newValue.persist();
-
+            JsonNode sourceData = l.reducer != null ? l.reducer.evalJavascript(r.data) : r.data;
+            storeLabelData(r,l,sourceData,0,null);
         } else if(l.extractors.size()==1){
             //we do not have to deal with multitype if there is only one extractor
             List<ExtractedValue> evs = extractedValues.getByName(l.extractors.get(0).name);
@@ -56,43 +83,15 @@ public class LabelService {
                         ArrayNode arrayNode = (ArrayNode) ev.data;
                         int idx = 0;
                         for(JsonNode childNode : arrayNode){
-                            LabelValue newValue = new LabelValue();
-                            newValue.ordinal=idx;
-                            idx++;
-                            newValue.data = childNode;
-                            if(l.reducer!=null){
-                                newValue.data = l.reducer.evalJavascript(newValue.data);
-                            }
-                            newValue.label = l;
-                            newValue.run = r;
-                            if(ev.sourceValueId() > 0) {
-                                LabelValue referenced = LabelValue.findById(ev.sourceValueId);
-                                newValue.sources.add(referenced);
-                            }else{
-                                //it doesn't have a source, this is ok
-                            }
-                            newValue.persist();
+                            JsonNode datum = l.reducer!=null ? l.reducer.evalJavascript(childNode) : childNode;
+                            idx = storeLabelData(r,l,datum,idx,ev.sourceValueId() > 0 ? Arrays.asList(LabelValue.findById(ev.sourceValueId)) : null);
                         }
                     }else{
                         //this means an error occurred in calculating
                     }
                 }else{
-                    //
-                    LabelValue newValue = new LabelValue();
-                    newValue.ordinal=0;
-                    newValue.data = ev.data;
-                    if(l.reducer!=null){
-                        newValue.data = l.reducer.evalJavascript(newValue.data);
-                    }
-                    newValue.label = l;
-                    newValue.run = r;
-                    newValue.persist();
-                    if(ev.sourceValueId > 0){
-                        //this can happen when the value is derived from a previous label but not iterated
-                        LabelValue referenced = LabelValue.findById(ev.sourceValueId);
-                        newValue.sources.add(referenced);
-                    }
-                    newValue.persist();
+                    JsonNode datum = l.reducer!=null ? l.reducer.evalJavascript(ev.data) : ev.data;
+                    storeLabelData(r,l,datum,0,ev.sourceValueId() > 0 ? Arrays.asList(LabelValue.findById(ev.sourceValueId)) : null);
                 }
             }
         } else {
@@ -104,34 +103,25 @@ public class LabelService {
                         if(!haveIterated) {
                             //create the object node
                             ObjectNode objectNode = JsonNodeFactory.instance.objectNode();
-                            LabelValue newValue = new LabelValue();
-                            newValue.ordinal = 0;
-                            newValue.label = l;
-                            newValue.run = r;
+                            List<LabelValue> sources = new ArrayList<>();
                             map.forEach((k, v) -> {
                                 objectNode.set(k, v.data);
                                 //TODO what if the sourceLabelId is invalid?
                                 if(v.hasSourceValue()) {
-                                    newValue.addSource(LabelValue.findById(v.sourceValueId));
+                                    sources.add(LabelValue.findById(v.sourceValueId));
                                 }
                             });
-                            if(l.reducer!=null){
-                                newValue.data = l.reducer.evalJavascript(objectNode);
-                            }else{
-                                newValue.data = objectNode;
-                            }
-                            newValue.persistAndFlush();
+                            JsonNode datum = l.reducer!=null ? l.reducer.evalJavascript(objectNode) : objectNode;
+                            storeLabelData(r,l,datum,0,sources);
                         }else {
                             int maxLength = l.extractors.stream()
                                     .filter(e -> Extractor.Type.VALUE.equals(e.type) && (e.targetLabel.hasForEach() || e.forEach) && map.containsKey(e.name) && map.get(e.name).data != null )
                                     .map(e->map.get(e.name).data.isArray() ? map.get(e.name).data.size() : 1)
                                     .max(Integer::compareTo).orElse(1);
+                            List<LabelValue> sources = new ArrayList<>();
+                            int idx=0;
                             for(int i=0; i<maxLength; i++){
                                 ObjectNode objectNode = JsonNodeFactory.instance.objectNode();
-                                LabelValue newValue = new LabelValue();
-                                newValue.ordinal=i;
-                                newValue.label=l;
-                                newValue.run=r;
                                 for(Extractor e : l.extractors){
                                     if(map.containsKey(e.name)){
                                         ExtractedValue v = map.get(e.name);
@@ -151,16 +141,12 @@ public class LabelService {
                                         }
 
                                         if(objectNode.has(e.name) && v.hasSourceValue()) {
-                                            newValue.addSource(LabelValue.findById(v.sourceValueId));
+                                            sources.add(LabelValue.findById(v.sourceValueId));
                                         }
                                     }
                                 }
-                                if(l.reducer!=null){
-                                    newValue.data = l.reducer.evalJavascript(objectNode);
-                                }else{
-                                    newValue.data = objectNode;
-                                }
-                                newValue.persistAndFlush();
+                                JsonNode datum = l.reducer!=null ? l.reducer.evalJavascript(objectNode) : objectNode;
+                                idx = storeLabelData(r,l,datum,idx,sources);
                             }
                         }
                     }
@@ -192,13 +178,11 @@ public class LabelService {
                         }
                     }
                     //at this point we have all the NxN combinations, time to calculate the label_values same as  above
-                    for(int idx = 0; idx < sources.size(); idx++){
-                        Map<String,Integer> sourcesMap = sources.get(idx);
+                    int idx = 0;//tracking the number of label_values created
+                    for(int i = 0; i < sources.size(); i++){
+                        Map<String,Integer> sourcesMap = sources.get(i);
                         ObjectNode objectNode = JsonNodeFactory.instance.objectNode();
-                        LabelValue newValue = new LabelValue();
-                        newValue.ordinal=idx;
-                        newValue.label=l;
-                        newValue.run=r;
+                        List<LabelValue> labelValues = new ArrayList<>();
                         for(Extractor e : l.extractors){
                             if(extractedValues.getNames().contains(e.name)){
                                 List<ExtractedValue> evs = extractedValues.getByName(e.name);
@@ -222,20 +206,92 @@ public class LabelService {
                                 }
                                 if(objectNode.has(e.name) && evs.get(sourcesMap.get(e.name)).hasSourceValue()) {
                                     LabelValue referenced = LabelValue.findById(evs.get(sourcesMap.get(e.name)).sourceValueId);
-                                    newValue.addSource(referenced);
+                                    labelValues.add(referenced);
                                 }
                             }
                         }
-                        if(l.reducer!=null){
-                            newValue.data = l.reducer.evalJavascript(objectNode);
-                        }else{
-                            newValue.data = objectNode;
-                        }
-                        newValue.persistAndFlush();
+                        JsonNode datum = l.reducer!=null ? l.reducer.evalJavascript(objectNode) : objectNode;
+                        idx = storeLabelData(r,l,datum,idx,labelValues);
                     }
                 }
             }
         }
+    }
+    public List<Label> whatCanWeFind(String name,long groupId){
+        List<Label> rtrn = new ArrayList<>();
+        //noinspection unchecked
+        Label.getEntityManager().createNativeQuery(
+            """
+            with recursive tree as (
+                    select
+                            l.id as id,
+                            l.sourcelabel_id,
+                            l.name as name,
+                            concat_ws(':',lg.name,l.name) as local_id,
+                            concat_ws(':',lg.name,l.name) as fqdn
+                    from label l left join labelgroup lg on l.sourcegroup_id = lg.id where l.group_id=:groupId
+                    union all
+                    select
+                            l.id,
+                            l.sourcelabel_id,
+                            l.name as name,
+                            concat_ws(':',lg.name,l.name) as local_id,
+                            t.fqdn || ':' || concat_ws(':',lg.name,l.name) as fqdn
+                    from tree as t inner join label l on t.id = l.sourcelabel_id left join labelgroup lg on l.sourceGroup_id = lg.id)
+            select id,name,min(fqdn) as fqdn from tree where fqdn like :name group by id,name order by fqdn asc            
+            """
+        )
+        .setParameter("groupId",groupId)
+        .setParameter("name","%"+name+"%")
+        .unwrap(NativeQuery.class)
+        .addScalar("id",Long.class)
+        .addScalar("name",String.class)
+        .addScalar("fqdn",String.class)
+                .list().forEach(v-> {
+                    Object[] o = (Object[]) v;
+                    Long id = (Long) o[0];
+                    String n = (String) o[1];
+                    String match = (String) o[2];
+                    Label found = Label.getEntityManager().getReference(Label.class, id);
+                    rtrn.add(found);
+                });
+
+        return rtrn;
+    }
+
+
+    //This is to find labels by a fqdn when users are creating their Extractors that potentially reference a label
+    //this does not work with a group that has a label that targets another group :( that would be sourceName:sourceName:labelName or sourceName:groupName:sourceName:groupName:labelName
+    public List<Label> findLabelFromFqdn(String name,long groupId){
+        List<Label> rtrn = new ArrayList<>();
+        if(name.contains(":")){
+            String split[] = name.split(":");
+            if(split.length == 2){//either sourceLabelName:labelName or groupName:labelName
+                //check for sourceLabelName:labelName
+                rtrn.addAll(Label.find("from Label L where L.group.id=?1 L.sourceLabel.name=?2 and L.name=?3",groupId,split[0],split[1]).list());
+                rtrn.addAll(Label.find("from Label L where L.group.id=?1 L.sourceGroup.name=?2 and L.name=?3",groupId,split[0],split[1]).list());
+            }else{// length > 2, either sourceLabelName:groupName:labelName (groupName could have a : too) or a groupName:labelName with a : in groupName
+                //check for sourceLabelName:groupName:labelName
+                String groupName = name.substring(name.indexOf(":"),name.lastIndexOf(":"));
+                rtrn.addAll(Label.find("from Label L where L.group.id=?1 L.sourceLabel.name=?2 and L.sourceGroup.name=?3 and L.name=?4",groupId,split[0],groupName,split[split.length-1]).list());
+                //check for groupName:labelName
+                groupName = name.substring(0,name.lastIndexOf(":"));
+                rtrn.addAll(Label.find("from Label L where L.group.id=?1 L.sourceGroup.name=?2 and L.name=?3",groupId,groupName,split[split.length-1]).list());
+            }
+        }
+        return rtrn;
+    }
+
+
+    public List<LabelGroup> findGroup(String name) {
+        return findGroup(name,"foo");//foo group is a placeholder
+    }
+    //This is a lookup for a group visible to the user based on a permission scope (team name?)
+    public List<LabelGroup> findGroup(String name,String scope){
+        if(name==null || name.isBlank()){
+            return Collections.emptyList();
+        }
+        return LabelGroup.find("from LabelGroup LG where LG.name = ?1 and LG.owner = ?2 or LG.owner = 'public'",name,scope).list();
     }
 
     public record ExtractedValue(long sourceValueId, long souceLabelId, boolean isIterated, int ordinal, JsonNode data){
